@@ -1,0 +1,24 @@
+<component name="ArtifactManager">
+  <artifact type="exploded-war" name="EventHubAI:war exploded">
+    <output-path>$PROJECT_DIR$/out/artifacts/EventHubAI_war_exploded</output-path>
+    <root id="root">
+      <element id="directory" name="WEB-INF">
+        <element id="directory" name="classes">
+          <element id="module-output" name="EventHubAI" />
+        </element>
+        <element id="directory" name="lib">
+          <element id="library" level="project" name="Maven: jakarta.servlet.jsp.jstl:jakarta.servlet.jsp.jstl-api:3.0.0" />
+          <element id="library" level="project" name="Maven: jakarta.el:jakarta.el-api:5.0.0" />
+          <element id="library" level="project" name="Maven: org.glassfish.web:jakarta.servlet.jsp.jstl:3.0.1" />
+          <element id="library" level="project" name="Maven: com.mysql:mysql-connector-j:9.1.0" />
+          <element id="library" level="project" name="Maven: com.google.protobuf:protobuf-java:4.26.1" />
+          <element id="library" level="project" name="Maven: org.mindrot:jbcrypt:0.4" />
+          <element id="library" level="project" name="Maven: com.google.code.gson:gson:2.11.0" />
+          <element id="library" level="project" name="Maven: com.google.errorprone:error_prone_annotations:2.27.0" />
+          <element id="library" level="project" name="Maven: commons-io:commons-io:2.16.1" />
+        </element>
+      </element>
+      <element id="javaee-facet-resources" facet="EventHubAI/web/Web" />
+    </root>
+  </artifact>
+</component>
