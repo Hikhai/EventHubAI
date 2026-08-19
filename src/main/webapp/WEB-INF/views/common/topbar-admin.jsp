@@ -1,5 +1,6 @@
 <%@ page contentType="text/html;charset=UTF-8" %>
-<%@ taglib prefix="c" uri="jakarta.tags.core" %>
+<%@ taglib prefix="c"  uri="jakarta.tags.core" %>
+<%@ taglib prefix="fn" uri="jakarta.tags.functions" %>
 <%--
     Admin Topbar
     Cần truyền attribute "topbarTitle" từ JSP page cha
@@ -21,13 +22,13 @@
             <i id="darkModeIcon" class="bi bi-moon-fill"></i>
         </button>
 
-        <%-- User info --%>
+        <%-- User dropdown --%>
         <div class="dropdown">
             <a href="#" class="topbar-user dropdown-toggle text-decoration-none"
                data-bs-toggle="dropdown">
                 <div class="avatar">
-                    <c:out value="${fn:substring(sessionScope.loggedInUser.fullName, 0, 1)}"
-                           xmlns:fn="jakarta.tags.functions"/>
+                    <%-- Lấy ký tự đầu của tên làm avatar --%>
+                    ${fn:substring(sessionScope.loggedInUser.fullName, 0, 1)}
                 </div>
                 <span class="d-none d-md-inline">
                     ${sessionScope.loggedInUser.fullName}

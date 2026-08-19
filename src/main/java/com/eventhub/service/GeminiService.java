@@ -28,11 +28,11 @@ public class GeminiService {
     private static final String BASE_URL =
             "https://generativelanguage.googleapis.com/v1beta/models/";
 
-    // Model text: gemini-2.5-flash (500 RPD với Lite, đủ cho demo)
-    private static final String TEXT_MODEL = "gemini-2.5-flash";
+    // Model text: gemini-3.6-flash (500 RPD với Lite, đủ cho demo)
+    private static final String TEXT_MODEL = "gemini-3.6-flash";
 
     // Model ảnh: imagen-4-fast (25 ảnh/ngày miễn phí)
-    private static final String IMAGE_MODEL = "imagen-4-fast-generate-001";
+    private static final String IMAGE_MODEL = "imagen-4.0-fast-generate-001";
 
     // Timeout 30 giây mỗi request
     private static final int TIMEOUT_SECONDS = 30;

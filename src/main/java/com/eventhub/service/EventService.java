@@ -153,7 +153,7 @@ public class EventService {
         }
 
         // --- Validate input ---
-        validateEventInput(event, false);  // false = đang sửa
+        validateEventInput(event, false);
 
         // --- Không giảm max_participants dưới current_registered ---
         if (event.getMaxParticipants() < existing.getCurrentRegistered()) {
@@ -163,11 +163,11 @@ public class EventService {
             );
         }
 
-        // --- Update DB ---
+        // --- Update DB (các trường text, không đụng đến ảnh) ---
         eventDAO.update(event);
 
         // --- Xử lý ảnh nếu có upload mới ---
-        // Giữ nguyên ảnh cũ nếu không upload mới
+        // Giữ nguyên thông tin ảnh cũ vào event object để deleteOldImage biết file nào xóa
         event.setImagePath(existing.getImagePath());
         event.setImageSource(existing.getImageSource());
 
@@ -177,13 +177,36 @@ public class EventService {
             event.setCategoryName(category.getCategoryName());
         }
 
-        boolean hasNewUpload = imagePart != null
-                && imagePart.getSize() > 0
-                && imagePart.getSubmittedFileName() != null
-                && !imagePart.getSubmittedFileName().isBlank();
+        // Kiểm tra có file upload mới không
+        // In log để debug
+        boolean hasNewUpload = false;
+        if (imagePart != null) {
+            long size = imagePart.getSize();
+            String fileName = imagePart.getSubmittedFileName();
+
+            System.out.println("[EventService] Update event " + event.getEventId()
+                    + " - imagePart size: " + size
+                    + ", fileName: '" + fileName + "'");
+
+            hasNewUpload = size > 0
+                    && fileName != null
+                    && !fileName.trim().isEmpty();
+        } else {
+            System.out.println("[EventService] Update event - imagePart is null");
+        }
 
         if (hasNewUpload) {
-            imageService.processImage(event, imagePart);
+            System.out.println("[EventService] Có upload mới → xử lý ảnh");
+            // Gọi handleUpload trực tiếp (không gọi processImage vì nó có nhánh AI)
+            try {
+                imageService.handleUploadDirect(event, imagePart);
+            } catch (Exception e) {
+                System.err.println("[EventService] Lỗi xử lý ảnh khi update: "
+                        + e.getMessage());
+                e.printStackTrace();
+            }
+        } else {
+            System.out.println("[EventService] Không có upload mới → giữ ảnh cũ");
         }
     }
 

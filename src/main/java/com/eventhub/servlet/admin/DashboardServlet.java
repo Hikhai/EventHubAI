@@ -8,9 +8,10 @@ import jakarta.servlet.annotation.WebServlet;
 import jakarta.servlet.http.*;
 
 import java.io.IOException;
+import java.util.ArrayList;
 
 /**
- * Hiển thị Dashboard Admin với thống kê và biểu đồ.
+ * Hiển thị Dashboard Admin.
  * GET /admin/dashboard
  */
 @WebServlet("/admin/dashboard")
@@ -23,27 +24,46 @@ public class DashboardServlet extends HttpServlet {
     protected void doGet(HttpServletRequest req, HttpServletResponse resp)
             throws ServletException, IOException {
 
+        DashboardDTO dashboard;
+
         try {
-            DashboardDTO dashboard = dashboardService.getDashboardData();
-
-            // Set object cho JSP dùng JSTL
-            req.setAttribute("dashboard", dashboard);
-
-            // Serialize chart data sang JSON (Chart.js cần JavaScript array)
-            // Dùng Gson để đảm bảo escape đúng
-            req.setAttribute("regByMonthJson",
-                    gson.toJson(dashboard.getRegistrationsByMonth()));
-            req.setAttribute("byCategoryJson",
-                    gson.toJson(dashboard.getEventsByCategory()));
-
-            req.getRequestDispatcher("/WEB-INF/views/admin/dashboard.jsp")
-                    .forward(req, resp);
-
+            dashboard = dashboardService.getDashboardData();
         } catch (Exception e) {
-            req.setAttribute("errorMsg",
-                    "Lỗi tải dữ liệu Dashboard: " + e.getMessage());
-            req.getRequestDispatcher("/WEB-INF/views/admin/dashboard.jsp")
-                    .forward(req, resp);
+            // Log lỗi để debug
+            System.err.println("[DashboardServlet] Lỗi lấy data: " + e.getMessage());
+            e.printStackTrace();
+
+            // Tạo DTO rỗng để tránh NPE trong JSP
+            dashboard = new DashboardDTO();
+            dashboard.setRegistrationsByMonth(new ArrayList<>());
+            dashboard.setEventsByCategory(new ArrayList<>());
+            dashboard.setTopEvents(new ArrayList<>());
+            dashboard.setUpcomingEvents(new ArrayList<>());
+            dashboard.setAlmostFullEvents(new ArrayList<>());
+            dashboard.setTopRatedEvents(new ArrayList<>());
+            dashboard.setRecentRegistrations(new ArrayList<>());
+
+            req.setAttribute("errorMsg", "Không thể tải một số dữ liệu Dashboard.");
         }
+
+        // Đảm bảo các list không null (nếu Service trả null)
+        if (dashboard.getRegistrationsByMonth() == null) {
+            dashboard.setRegistrationsByMonth(new ArrayList<>());
+        }
+        if (dashboard.getEventsByCategory() == null) {
+            dashboard.setEventsByCategory(new ArrayList<>());
+        }
+
+        // Set attributes
+        req.setAttribute("dashboard", dashboard);
+
+        // Serialize chart data sang JSON (luôn có giá trị, ít nhất là "[]")
+        req.setAttribute("regByMonthJson",
+                gson.toJson(dashboard.getRegistrationsByMonth()));
+        req.setAttribute("byCategoryJson",
+                gson.toJson(dashboard.getEventsByCategory()));
+
+        req.getRequestDispatcher("/WEB-INF/views/admin/dashboard.jsp")
+                .forward(req, resp);
     }
 }

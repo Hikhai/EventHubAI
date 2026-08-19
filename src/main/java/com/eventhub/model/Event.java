@@ -97,6 +97,29 @@ public class Event {
         return registrationDeadline.format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm"));
     }
 
+    /**
+     * Format cho HTML input datetime-local (yyyy-MM-ddTHH:mm)
+     */
+    public String getStartTimeInput() {
+        if (startTime == null) return "";
+        return startTime.format(
+                java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm")
+        );
+    }
+
+    public String getEndTimeInput() {
+        if (endTime == null) return "";
+        return endTime.format(
+                java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm")
+        );
+    }
+
+    public String getRegistrationDeadlineInput() {
+        if (registrationDeadline == null) return "";
+        return registrationDeadline.format(
+                java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm")
+        );
+    }
     // ===== GETTERS & SETTERS =====
     public int getEventId() { return eventId; }
     public void setEventId(int eventId) { this.eventId = eventId; }

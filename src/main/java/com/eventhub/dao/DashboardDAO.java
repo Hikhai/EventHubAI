@@ -44,14 +44,24 @@ public class DashboardDAO {
     /**
      * Lấy số đăng ký theo từng tháng (12 tháng gần nhất) cho Line Chart.
      */
+    /**
+     * Lấy số đăng ký theo từng tháng (12 tháng gần nhất) cho Line Chart.
+     */
     public List<DashboardDTO.MonthStat> getRegistrationsByMonth() throws SQLException {
-        String sql = "SELECT DATE_FORMAT(registered_at, '%m/%Y') AS month, " +
-                "COUNT(*) AS count " +
-                "FROM registrations " +
-                "WHERE registered_at >= DATE_SUB(NOW(), INTERVAL 12 MONTH) " +
-                "AND status = 'REGISTERED' " +
-                "GROUP BY DATE_FORMAT(registered_at, '%Y-%m') " +
-                "ORDER BY DATE_FORMAT(registered_at, '%Y-%m') ASC";
+        // Dùng subquery để tránh ONLY_FULL_GROUP_BY issue
+        // Đưa DATE_FORMAT vào cùng một biểu thức, dùng alias
+        String sql =
+                "SELECT month_label, month_sort, count FROM ( " +
+                        "  SELECT " +
+                        "    DATE_FORMAT(registered_at, '%m/%Y') AS month_label, " +
+                        "    DATE_FORMAT(registered_at, '%Y-%m') AS month_sort, " +
+                        "    COUNT(*) AS count " +
+                        "  FROM registrations " +
+                        "  WHERE registered_at >= DATE_SUB(NOW(), INTERVAL 12 MONTH) " +
+                        "  AND status = 'REGISTERED' " +
+                        "  GROUP BY month_label, month_sort " +
+                        ") AS t " +
+                        "ORDER BY month_sort ASC";
 
         try (Connection conn = DBConnection.getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql)) {
@@ -60,7 +70,7 @@ public class DashboardDAO {
             ResultSet rs = stmt.executeQuery();
             while (rs.next()) {
                 list.add(new DashboardDTO.MonthStat(
-                        rs.getString("month"),
+                        rs.getString("month_label"),
                         rs.getInt("count")
                 ));
             }

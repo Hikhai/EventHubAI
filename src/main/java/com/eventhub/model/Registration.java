@@ -45,6 +45,15 @@ public class Registration {
         if (eventStartTime == null) return "";
         return eventStartTime.format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm"));
     }
+    /**
+     * Format thời gian đăng ký để hiển thị.
+     */
+    public String getFormattedRegisteredAt() {
+        if (registeredAt == null) return "";
+        return registeredAt.format(
+                java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm")
+        );
+    }
 
     // ===== GETTERS & SETTERS =====
     public int getRegistrationId() { return registrationId; }
