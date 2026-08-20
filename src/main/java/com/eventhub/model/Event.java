@@ -74,9 +74,20 @@ public class Event {
      * Đường dẫn ảnh để hiển thị trong JSP.
      * Trả về ảnh default nếu không có ảnh cụ thể.
      */
+    /**
+     * Đường dẫn ảnh để hiển thị trong JSP (xử lý đúng thư mục events vs defaults)
+     */
     public String getDisplayImagePath() {
         if (imagePath != null && !imagePath.isEmpty()) {
-            return "/eventhub/uploads/events/" + imagePath;
+            // Nếu là ảnh mặc định -> Trỏ vào thư mục defaults
+            if ("DEFAULT".equals(imageSource) || imagePath.startsWith("default_")) {
+                return "/eventhub/uploads/defaults/" + imagePath;
+            }
+            // Nếu là ảnh upload hoặc AI -> Trỏ vào thư mục events (có cache-busting)
+            String cacheKey = updatedAt != null
+                    ? "?v=" + updatedAt.toEpochSecond(java.time.ZoneOffset.UTC)
+                    : "";
+            return "/eventhub/uploads/events/" + imagePath + cacheKey;
         }
         return "/eventhub/uploads/defaults/default_other.jpg";
     }

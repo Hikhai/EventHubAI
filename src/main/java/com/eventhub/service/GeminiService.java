@@ -32,7 +32,7 @@ public class GeminiService {
     private static final String TEXT_MODEL = "gemini-3.6-flash";
 
     // Model ảnh: imagen-4-fast (25 ảnh/ngày miễn phí)
-    private static final String IMAGE_MODEL = "imagen-4.0-fast-generate-001";
+    private static final String IMAGE_MODEL = "gemini-3.1-flash-image";
 
     // Timeout 30 giây mỗi request
     private static final int TIMEOUT_SECONDS = 30;

@@ -8,33 +8,25 @@ import jakarta.servlet.http.Part;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.*;
-import java.sql.SQLException;
 import java.util.*;
 
 /**
- * Service xử lý ảnh sự kiện:
- *   - Upload ảnh từ Admin
- *   - Tạo ảnh bằng Imagen AI
- *   - Fallback về ảnh mặc định theo danh mục
+ * Service xử lý ảnh sự kiện.
+ * Tách biệt rõ ràng luồng Tạo mới và luồng Cập nhật.
  */
 public class ImageService {
 
     private final EventDAO eventDAO = new EventDAO();
     private final GeminiService geminiService = new GeminiService();
 
-    // Thư mục gốc chứa uploads (đọc từ env)
-    private static final String UPLOAD_BASE_DIR =
-            System.getenv("UPLOAD_BASE_DIR");
+    private static final String UPLOAD_BASE_DIR = System.getenv("UPLOAD_BASE_DIR");
 
-    // Các định dạng file ảnh được chấp nhận (kiểm tra Content-Type, không phải extension)
     private static final Set<String> ALLOWED_TYPES = Set.of(
             "image/jpeg", "image/jpg", "image/png", "image/webp"
     );
 
-    // Kích thước tối đa: 5MB
-    private static final long MAX_FILE_SIZE = 5L * 1024 * 1024;
+    private static final long MAX_FILE_SIZE = 5L * 1024 * 1024; // 5MB
 
-    // Map tên danh mục → tên file ảnh mặc định
     private static final Map<String, String> DEFAULT_IMAGE_MAP = Map.of(
             "Hội thảo",             "default_hoithao.jpg",
             "Workshop",             "default_workshop.jpg",
@@ -45,172 +37,164 @@ public class ImageService {
     );
 
     // =====================================================
-    // PHƯƠNG THỨC CHÍNH: XỬ LÝ ẢNH SAU KHI TẠO/SỬA SỰ KIỆN
+    // LUỒNG 1: DÙNG CHO TẠO SỰ KIỆN MỚI
     // =====================================================
 
     /**
-     * Xử lý ảnh cho sự kiện theo thứ tự ưu tiên:
-     *   1. Nếu admin upload ảnh → dùng ảnh upload
-     *   2. Nếu không upload     → gọi Imagen AI tạo ảnh
-     *   3. Nếu AI thất bại      → dùng ảnh mặc định theo danh mục
-     *
-     * Không throw exception → luồng lưu sự kiện không bị gián đoạn.
-     *
-     * @param event    Sự kiện vừa được lưu (có eventId)
-     * @param imagePart File upload từ form (có thể null)
+     * Khi TẠO MỚI sự kiện:
+     *   - Nếu có upload file -> Dùng file upload
+     *   - Nếu KHÔNG upload   -> Thử Gemini AI -> Thất bại -> Dùng Default
      */
-    public void processImage(Event event, Part imagePart) {
-        try {
-            // Kiểm tra có file upload không
-            boolean hasUpload = imagePart != null
-                    && imagePart.getSize() > 0
-                    && imagePart.getSubmittedFileName() != null
-                    && !imagePart.getSubmittedFileName().isBlank();
+    public void processImageForCreate(Event event, Part imagePart) {
+        boolean hasUpload = imagePart != null
+                && imagePart.getSize() > 0
+                && imagePart.getSubmittedFileName() != null
+                && !imagePart.getSubmittedFileName().trim().isEmpty();
 
-            if (hasUpload) {
-                // --- CASE 1: Admin đã upload ảnh ---
-                handleUpload(event, imagePart);
-
-            } else {
-                // --- CASE 2: Không upload → thử AI ---
-                handleAutoImage(event);
-            }
-
-        } catch (Exception e) {
-            // Lỗi ảnh KHÔNG crash luồng chính
-            System.err.println("[ImageService] Lỗi xử lý ảnh: " + e.getMessage());
-            // Thử set ảnh default nếu chưa có
+        if (hasUpload) {
             try {
-                if (event.getImagePath() == null) {
-                    setDefaultImage(event);
-                }
-            } catch (Exception ignored) {}
+                saveUploadedImage(event, imagePart);
+            } catch (Exception e) {
+                System.err.println("[ImageService] Lỗi upload ảnh tạo mới: " + e.getMessage());
+                setDefaultImage(event);
+            }
+        } else {
+            // Không upload -> Thử AI
+            tryAIOrSetDefault(event);
         }
     }
 
     // =====================================================
-    // XỬ LÝ UPLOAD ẢNH THỦ CÔNG
+    // LUỒNG 2: DÙNG CHO CẬP NHẬT SỰ KIỆN
     // =====================================================
 
     /**
-     * Validate và lưu file ảnh upload từ Admin.
-     *
-     * @throws FileException nếu file không hợp lệ
+     * Khi CẬP NHẬT sự kiện:
+     *   - Chỉ xử lý NẾU Admin chọn file mới
+     *   - Tuyệt đối KHÔNG gọi AI hay gán default nếu không chọn file mới (giữ ảnh cũ)
      */
-    private void handleUpload(Event event, Part imagePart)
-            throws FileException, IOException, SQLException {
+    public void processImageForUpdate(Event event, Part imagePart) {
+        boolean hasNewUpload = imagePart != null
+                && imagePart.getSize() > 0
+                && imagePart.getSubmittedFileName() != null
+                && !imagePart.getSubmittedFileName().trim().isEmpty();
 
-        // --- Validate Content-Type (không tin extension) ---
+        if (hasNewUpload) {
+            try {
+                saveUploadedImage(event, imagePart);
+            } catch (Exception e) {
+                System.err.println("[ImageService] Lỗi upload ảnh cập nhật: " + e.getMessage());
+            }
+        }
+        // Nếu không chọn file mới -> KHÔNG LÀM GÌ CẢ (Giữ nguyên ảnh cũ trong DB)
+    }
+
+    // =====================================================
+    // PRIVATE HELPERS
+    // =====================================================
+
+    /**
+     * Lưu file upload thủ công vào đĩa và update DB.
+     */
+    private void saveUploadedImage(Event event, Part imagePart)
+            throws FileException, IOException, Exception {
+
         String contentType = imagePart.getContentType();
         if (contentType == null || !ALLOWED_TYPES.contains(contentType.toLowerCase())) {
-            throw new FileException(
-                    "Chỉ chấp nhận file ảnh JPG, PNG, WEBP. " +
-                            "File của bạn: " + contentType
-            );
+            throw new FileException("Chỉ chấp nhận file ảnh JPG, PNG, WEBP.");
         }
 
-        // --- Validate kích thước ---
         if (imagePart.getSize() > MAX_FILE_SIZE) {
             throw new FileException("Kích thước file không được vượt quá 5MB.");
         }
 
-        // --- Xóa file ảnh cũ (nếu có và không phải ảnh default) ---
-        deleteOldImage(event);
+        // Xóa file ảnh cũ trên đĩa nếu có (chỉ xóa file UPLOADED hoặc AI_GENERATED)
+        deleteOldImageFile(event);
 
-        // --- Tạo tên file mới bằng UUID (bảo mật, tránh path traversal) ---
+        // Tạo tên file mới UUID
         String extension = getExtension(contentType);
-        String newFileName = "event_" + UUID.randomUUID() + "." + extension;
+        String newFileName = "event_" + UUID.randomUUID().toString() + "." + extension;
 
-        // --- Lưu file ---
+        // Lưu file vào thư mục uploads/events
         Path uploadPath = Paths.get(UPLOAD_BASE_DIR, "events");
-        Files.createDirectories(uploadPath);  // Tạo thư mục nếu chưa có
+        Files.createDirectories(uploadPath);
 
         Path filePath = uploadPath.resolve(newFileName);
         try (InputStream inputStream = imagePart.getInputStream()) {
             Files.copy(inputStream, filePath, StandardCopyOption.REPLACE_EXISTING);
         }
 
-        // --- Cập nhật DB ---
+        // Cập nhật Database
         eventDAO.updateImage(event.getEventId(), newFileName, "UPLOADED");
         event.setImagePath(newFileName);
         event.setImageSource("UPLOADED");
 
-        System.out.println("[ImageService] Đã upload ảnh: " + newFileName);
+        System.out.println("[ImageService] ✅ Upload ảnh thành công: " + newFileName);
     }
 
     /**
-     * Tự động tạo ảnh: thử AI trước, fallback về default.
+     * Thử gọi AI gen ảnh, nếu hỏng thì lấy ảnh Default theo danh mục.
      */
-    private void handleAutoImage(Event event) {
-        // Thử Imagen AI
+    private void tryAIOrSetDefault(Event event) {
+        System.out.println("[ImageService] Không có file upload -> Thử tạo ảnh bằng Gemini AI...");
         String aiFileName = geminiService.generateEventImage(event);
 
         if (aiFileName != null) {
-            // AI thành công
             try {
                 eventDAO.updateImage(event.getEventId(), aiFileName, "AI_GENERATED");
                 event.setImagePath(aiFileName);
                 event.setImageSource("AI_GENERATED");
-                System.out.println("[ImageService] Dùng ảnh AI: " + aiFileName);
+                System.out.println("[ImageService] ✅ Tạo ảnh AI thành công: " + aiFileName);
+                return;
             } catch (Exception e) {
-                System.err.println("[ImageService] Lỗi update DB sau AI: " + e.getMessage());
+                System.err.println("[ImageService] Lỗi lưu DB ảnh AI: " + e.getMessage());
             }
-        } else {
-            // AI thất bại → dùng ảnh default
-            setDefaultImage(event);
         }
+
+        // Nếu AI thất bại -> Set Default
+        setDefaultImage(event);
     }
 
     /**
-     * Set ảnh mặc định theo danh mục sự kiện.
+     * Gán ảnh mặc định theo danh mục.
      */
     private void setDefaultImage(Event event) {
         String categoryName = event.getCategoryName();
-        // Tìm trong map, nếu không có thì dùng "Khác"
-        String defaultFileName = DEFAULT_IMAGE_MAP.getOrDefault(
-                categoryName, "default_other.jpg"
-        );
+        String defaultFileName = DEFAULT_IMAGE_MAP.getOrDefault(categoryName, "default_other.jpg");
 
         try {
             eventDAO.updateImage(event.getEventId(), defaultFileName, "DEFAULT");
             event.setImagePath(defaultFileName);
             event.setImageSource("DEFAULT");
-            System.out.println("[ImageService] Dùng ảnh default: " + defaultFileName);
+            System.out.println("[ImageService] ℹ️ Sử dụng ảnh mặc định: " + defaultFileName);
         } catch (Exception e) {
             System.err.println("[ImageService] Lỗi set default image: " + e.getMessage());
         }
     }
 
     /**
-     * Xóa file ảnh cũ của sự kiện (khi upload ảnh mới).
-     * KHÔNG xóa ảnh default (chúng dùng chung).
+     * Xóa file ảnh cũ khỏi đĩa cứng (không xóa ảnh mặc định).
      */
-    private void deleteOldImage(Event event) {
+    private void deleteOldImageFile(Event event) {
         String oldPath = event.getImagePath();
         String oldSource = event.getImageSource();
 
-        // Chỉ xóa nếu là ảnh đã upload hoặc AI gen (không xóa default)
-        if (oldPath != null
-                && ("UPLOADED".equals(oldSource) || "AI_GENERATED".equals(oldSource))) {
+        if (oldPath != null && ("UPLOADED".equals(oldSource) || "AI_GENERATED".equals(oldSource))) {
             try {
                 Path filePath = Paths.get(UPLOAD_BASE_DIR, "events", oldPath);
                 Files.deleteIfExists(filePath);
-                System.out.println("[ImageService] Đã xóa ảnh cũ: " + oldPath);
+                System.out.println("[ImageService] 🗑️ Đã xóa file cũ: " + oldPath);
             } catch (Exception e) {
-                // Không xóa được file cũ → log nhưng không crash
-                System.err.println("[ImageService] Không xóa được file cũ: " + e.getMessage());
+                System.err.println("[ImageService] Không thể xóa file cũ: " + e.getMessage());
             }
         }
     }
 
-    /**
-     * Lấy extension từ Content-Type.
-     */
     private String getExtension(String contentType) {
         return switch (contentType.toLowerCase()) {
             case "image/png"  -> "png";
             case "image/webp" -> "webp";
-            default           -> "jpg";  // jpeg, jpg
+            default           -> "jpg";
         };
     }
 }
