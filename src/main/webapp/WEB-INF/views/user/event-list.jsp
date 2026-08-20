@@ -8,10 +8,15 @@
 
 <%-- ===== HERO SECTION VỚI SEARCH ===== --%>
 <section class="hero-section">
+    <span class="hero-orb one"></span>
+    <span class="hero-orb two"></span>
     <div class="container">
-        <h1 data-aos="fade-up">Khám phá Sự kiện</h1>
-        <p class="subtitle" data-aos="fade-up" data-aos-delay="100">
-            Tìm và đăng ký sự kiện phù hợp với bạn
+        <div class="hero-kicker" data-aos="fade-up">
+            <i class="bi bi-stars"></i> Gợi ý thông minh với AI
+        </div>
+        <h1 data-aos="fade-up">Khám phá sự kiện nổi bật</h1>
+        <p class="subtitle" data-aos="fade-up" data-aos-delay="80">
+            Tìm, lọc và đăng ký sự kiện phù hợp — nhanh, rõ ràng, thân thiện.
         </p>
 
         <%-- Search form --%>
@@ -101,7 +106,7 @@
                         <div class="event-card">
                                 <%-- Image + badge danh mục --%>
                             <div class="event-card-image">
-                                <img src="${event.displayImagePath}"
+                                <img src="${pageContext.request.contextPath}${event.displayImagePath}"
                                      alt="${event.title}"
                                      onerror="this.src='${pageContext.request.contextPath}/uploads/defaults/default_other.jpg'">
                                 <span class="event-card-badge">
@@ -240,8 +245,8 @@
     <%-- ===== GỢI Ý SỰ KIỆN ===== --%>
     <c:if test="${not empty recommendations}">
         <div class="mt-5">
-            <h3 class="mb-4">
-                <i class="bi bi-lightbulb text-warning"></i>
+            <h3 class="mb-4 section-heading">
+                <i class="bi bi-lightbulb-fill text-warning"></i>
                 Có thể bạn quan tâm
             </h3>
             <div class="row g-4">
@@ -249,7 +254,7 @@
                     <div class="col-md-4">
                         <div class="event-card">
                             <div class="event-card-image">
-                                <img src="${rec.displayImagePath}" alt="${rec.title}"
+                                <img src="${pageContext.request.contextPath}${rec.displayImagePath}" alt="${rec.title}"
                                      onerror="this.src='${pageContext.request.contextPath}/uploads/defaults/default_other.jpg'">
                                 <span class="event-card-badge">${rec.categoryName}</span>
                             </div>

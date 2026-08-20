@@ -1,41 +1,35 @@
-/* ============================================================
-   MAIN JAVASCRIPT
-   ============================================================ */
-
-// Chạy khi DOM ready
-document.addEventListener('DOMContentLoaded', function() {
-
-    // ===== DARK MODE TOGGLE =====
+document.addEventListener('DOMContentLoaded', function () {
     initDarkMode();
-
-    // ===== FLASH MESSAGE AUTO-HIDE =====
     initFlashMessages();
-
-    // ===== CONFIRM DIALOGS =====
     initConfirmForms();
+    initNavbarScroll();
 
-    // ===== AOS INIT (nếu có) =====
     if (typeof AOS !== 'undefined') {
-        AOS.init({ duration: 600, once: true });
+        AOS.init({ duration: 650, once: true, easing: 'ease-out-cubic', offset: 40 });
     }
 });
 
-/**
- * Khởi tạo dark mode với localStorage
- */
+function initNavbarScroll() {
+    const navbar = document.getElementById('mainNavbar');
+    if (!navbar) return;
+
+    const onScroll = function () {
+        navbar.classList.toggle('is-scrolled', window.scrollY > 8);
+    };
+    onScroll();
+    window.addEventListener('scroll', onScroll, { passive: true });
+}
+
 function initDarkMode() {
     const toggleBtn = document.getElementById('darkModeToggle');
     const html = document.documentElement;
-
-    // Load preference từ localStorage
     const savedTheme = localStorage.getItem('theme') || 'light';
     html.setAttribute('data-bs-theme', savedTheme);
     updateDarkModeIcon(savedTheme);
 
     if (toggleBtn) {
-        toggleBtn.addEventListener('click', function() {
-            const currentTheme = html.getAttribute('data-bs-theme');
-            const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+        toggleBtn.addEventListener('click', function () {
+            const newTheme = html.getAttribute('data-bs-theme') === 'dark' ? 'light' : 'dark';
             html.setAttribute('data-bs-theme', newTheme);
             localStorage.setItem('theme', newTheme);
             updateDarkModeIcon(newTheme);
@@ -46,31 +40,24 @@ function initDarkMode() {
 function updateDarkModeIcon(theme) {
     const icon = document.getElementById('darkModeIcon');
     if (icon) {
-        icon.className = theme === 'dark' ? 'bi bi-sun-fill' : 'bi bi-moon-fill';
+        icon.className = theme === 'dark' ? 'bi bi-sun-fill' : 'bi bi-moon-stars-fill';
     }
 }
 
-/**
- * Auto-hide flash messages sau 4 giây
- */
 function initFlashMessages() {
-    const flashMessages = document.querySelectorAll('.alert-flash');
-    flashMessages.forEach(function(msg) {
-        setTimeout(function() {
-            msg.style.transition = 'opacity 0.5s';
+    document.querySelectorAll('.alert-flash').forEach(function (msg) {
+        setTimeout(function () {
+            msg.style.transition = 'opacity 0.4s, transform 0.4s';
             msg.style.opacity = '0';
-            setTimeout(() => msg.remove(), 500);
-        }, 4000);
+            msg.style.transform = 'translateX(12px)';
+            setTimeout(function () { msg.remove(); }, 400);
+        }, 4200);
     });
 }
 
-/**
- * Confirm dialog cho các form có class "confirm-form"
- */
 function initConfirmForms() {
-    const forms = document.querySelectorAll('form.confirm-form');
-    forms.forEach(function(form) {
-        form.addEventListener('submit', function(e) {
+    document.querySelectorAll('form.confirm-form').forEach(function (form) {
+        form.addEventListener('submit', function (e) {
             const message = form.dataset.confirm || 'Bạn có chắc chắn?';
             if (!confirm(message)) {
                 e.preventDefault();

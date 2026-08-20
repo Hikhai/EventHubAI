@@ -5,19 +5,17 @@
 <jsp:include page="/WEB-INF/views/common/header.jsp"/>
 <jsp:include page="/WEB-INF/views/common/navbar-user.jsp"/>
 
-<%-- Header với gradient --%>
-<div class="my-events-header">
-    <div class="container">
-        <h1 class="mb-2">
-            <i class="bi bi-bookmark-star-fill"></i> Sự kiện của tôi
-        </h1>
-        <p class="mb-0" style="opacity:0.9;">
-            Quản lý các sự kiện bạn đã đăng ký
-        </p>
+<div class="my-events-page">
+    <div class="my-events-header">
+        <div class="container">
+            <h1 class="mb-2 fw-bold">Sự kiện của tôi</h1>
+            <p class="mb-0" style="opacity:0.9;">
+                Theo dõi lịch đăng ký, sự kiện đã tham gia và đánh giá của bạn.
+            </p>
+        </div>
     </div>
-</div>
 
-<div class="container py-4">
+    <div class="container my-events-body">
 
     <%-- ===== TABS ===== --%>
     <div class="my-events-tabs">
@@ -55,7 +53,7 @@
             <c:otherwise>
                 <c:forEach var="reg" items="${upcoming}">
                     <div class="registration-list-item">
-                        <img src="${pageContext.request.contextPath}/uploads/events/${reg.eventImagePath}"
+                        <img src="${pageContext.request.contextPath}${reg.displayImagePath}"
                              class="event-thumb"
                              onerror="this.src='${pageContext.request.contextPath}/uploads/defaults/default_other.jpg'"
                              alt="${reg.eventTitle}">
@@ -104,7 +102,7 @@
             <c:otherwise>
                 <c:forEach var="reg" items="${attended}">
                     <div class="registration-list-item">
-                        <img src="${pageContext.request.contextPath}/uploads/events/${reg.eventImagePath}"
+                        <img src="${pageContext.request.contextPath}${reg.displayImagePath}"
                              class="event-thumb"
                              onerror="this.src='${pageContext.request.contextPath}/uploads/defaults/default_other.jpg'"
                              alt="${reg.eventTitle}">
@@ -164,7 +162,7 @@
             <c:otherwise>
                 <c:forEach var="reg" items="${cancelled}">
                     <div class="registration-list-item">
-                        <img src="${pageContext.request.contextPath}/uploads/events/${reg.eventImagePath}"
+                        <img src="${pageContext.request.contextPath}${reg.displayImagePath}"
                              class="event-thumb"
                              onerror="this.src='${pageContext.request.contextPath}/uploads/defaults/default_other.jpg'"
                              alt="${reg.eventTitle}">
@@ -187,6 +185,7 @@
                 </c:forEach>
             </c:otherwise>
         </c:choose>
+    </div>
     </div>
 </div>
 

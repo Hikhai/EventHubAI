@@ -22,6 +22,14 @@ public class EventFilterDTO {
         return (page - 1) * pageSize;
     }
 
+    public boolean hasKeyword() {
+        return keyword != null && !keyword.trim().isEmpty();
+    }
+
+    public boolean hasStatus() {
+        return status != null && !status.isEmpty();
+    }
+
     // ===== GETTERS & SETTERS =====
     public String getKeyword() { return keyword; }
     public void setKeyword(String keyword) { this.keyword = keyword; }
@@ -36,5 +44,7 @@ public class EventFilterDTO {
     public void setPage(int page) { this.page = Math.max(1, page); }
 
     public int getPageSize() { return pageSize; }
-    public void setPageSize(int pageSize) { this.pageSize = pageSize; }
+    public void setPageSize(int pageSize) {
+        this.pageSize = Math.min(50, Math.max(1, pageSize));
+    }
 }

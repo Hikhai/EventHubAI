@@ -10,10 +10,9 @@
     <%-- ===== LEFT PANEL - HERO ===== --%>
     <div class="auth-hero">
         <div class="auth-hero-content">
-            <h1>Tham gia EventHub! 🎉</h1>
+            <h1>Tham gia EventHub</h1>
             <p>
-                Tạo tài khoản miễn phí để đăng ký sự kiện, kết nối với
-                cộng đồng sinh viên và nhận gợi ý AI thông minh.
+                Tạo tài khoản miễn phí để đăng ký sự kiện và nhận gợi ý AI theo sở thích của bạn.
             </p>
 
             <div class="auth-stats">

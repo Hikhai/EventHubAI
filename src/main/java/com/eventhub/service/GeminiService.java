@@ -1,5 +1,6 @@
 package com.eventhub.service;
 
+import com.eventhub.config.UploadConfig;
 import com.eventhub.model.Event;
 import com.google.gson.*;
 
@@ -13,11 +14,11 @@ import java.util.*;
 /**
  * Service gọi Google Gemini API.
  * Dùng java.net.http.HttpClient (built-in Java 11+), không cần SDK ngoài.
- *
+ * <p>
  * 3 chức năng chính:
- *   1. generateSummary  → Tóm tắt mô tả sự kiện (gemini-2.5-flash)
- *   2. generateImage    → Tạo ảnh banner (imagen-4-fast)
- *   3. chat             → Chatbot hỏi đáp (gemini-2.5-flash)
+ * 1. generateSummary  → tóm tắt sự kiện (gemini-3.6-flash)
+ * 2. generateImage    → banner 16:9 (gemini-3.1-flash-image / generateContent)
+ * 3. chat             → chatbot (gemini-3.6-flash)
  */
 public class GeminiService {
 
@@ -28,18 +29,20 @@ public class GeminiService {
     private static final String BASE_URL =
             "https://generativelanguage.googleapis.com/v1beta/models/";
 
-    // Model text: gemini-3.6-flash (500 RPD với Lite, đủ cho demo)
-    private static final String TEXT_MODEL = "gemini-3.6-flash";
+    private static final String[] TEXT_MODELS = {
+            "gemini-3.6-flash",
+            "gemini-2.5-flash",
+            "gemini-2.0-flash"
+    };
 
-    // Model ảnh: imagen-4-fast (25 ảnh/ngày miễn phí)
-    private static final String IMAGE_MODEL = "gemini-3.1-flash-image";
+    private static final String[] IMAGE_MODELS = {
+            "gemini-3.1-flash-image",
+            "gemini-2.5-flash-image",
+            "gemini-2.0-flash-preview-image-generation"
+    };
 
-    // Timeout 30 giây mỗi request
     private static final int TIMEOUT_SECONDS = 30;
-
-    // Thư mục lưu ảnh AI generate (đọc từ env)
-    private static final String UPLOAD_DIR =
-            System.getenv("UPLOAD_BASE_DIR");
+    private static final int IMAGE_TIMEOUT_SECONDS = 90;
 
     // HttpClient dùng chung (thread-safe, tạo 1 lần)
     private static final HttpClient HTTP_CLIENT = HttpClient.newBuilder()
@@ -70,19 +73,24 @@ public class GeminiService {
         try {
             // Tạo prompt yêu cầu Gemini tóm tắt
             String prompt = String.format(
-                    "Hãy tóm tắt mô tả sự kiện sau trong 2-3 câu ngắn gọn, " +
-                            "súc tích và hấp dẫn bằng tiếng Việt. " +
-                            "Chỉ trả về đoạn tóm tắt, không giải thích thêm.\n\n" +
+                    "Bạn là copywriter sự kiện dành cho sinh viên Việt Nam.\n" +
+                            "Viết MỘT đoạn tóm tắt 2 câu (tối đa 180 ký tự) cho sự kiện dưới đây.\n" +
+                            "Yêu cầu:\n" +
+                            "- Câu 1: nêu rõ đây là sự kiện gì và dành cho ai\n" +
+                            "- Câu 2: nêu 1 lợi ích / điểm đặc biệt để người đọc muốn đăng ký\n" +
+                            "- Giọng thân thiện, cụ thể, không sáo rỗng\n" +
+                            "- Không dùng ngoặc kép, không tiền tố như 'Tóm tắt:', không emoji\n" +
+                            "- Chỉ trả về đoạn tóm tắt\n\n" +
                             "Tên sự kiện: %s\n" +
                             "Mô tả: %s",
-                    title, description
+                    title,
+                    description != null && description.length() > 800
+                            ? description.substring(0, 800)
+                            : description
             );
 
-            // Build request body JSON
-            String requestBody = buildTextRequestBody(prompt, 200, 0.7);
-
-            // Gọi API
-            String responseJson = callGeminiAPI(TEXT_MODEL + ":generateContent", requestBody);
+            String requestBody = buildTextRequestBody(prompt, 400, 0.4);
+            String responseJson = generateContent(TEXT_MODELS, requestBody, TIMEOUT_SECONDS);
             if (responseJson == null) return null;
 
             // Parse kết quả từ JSON response
@@ -111,41 +119,37 @@ public class GeminiService {
             System.err.println("[GeminiService] GEMINI_API_KEY chưa cấu hình!");
             return null;
         }
-        if (UPLOAD_DIR == null || UPLOAD_DIR.isBlank()) {
-            System.err.println("[GeminiService] UPLOAD_BASE_DIR chưa cấu hình!");
-            return null;
-        }
-
         try {
-            // Tạo prompt mô tả ảnh cần tạo
-            String shortDesc = event.getDescription() != null
-                    && event.getDescription().length() > 80
-                    ? event.getDescription().substring(0, 80)
-                    : event.getDescription();
+            String desc = event.getDescription() != null ? event.getDescription() : "";
+            if (desc.length() > 400) {
+                desc = desc.substring(0, 400);
+            }
 
             String prompt = String.format(
-                    "Professional event banner image for an event titled '%s', " +
-                            "category: '%s', description: '%s'. " +
-                            "Clean modern design, suitable for student organization, " +
-                            "vibrant colors, no text overlay, 16:9 landscape format.",
+                    "Generate a photorealistic 16:9 event banner photograph. " +
+                            "No text, no letters, no logos, no watermarks, no UI mockup.\n" +
+                            "Event title: %s\n" +
+                            "Category: %s\n" +
+                            "Setting and details: %s\n" +
+                            "Style: vibrant campus/student event, cinematic lighting, " +
+                            "sharp focus, real people and venue atmosphere matching the category.",
                     event.getTitle(),
-                    event.getCategoryName() != null ? event.getCategoryName() : "Event",
-                    shortDesc != null ? shortDesc : ""
+                    event.getCategoryName() != null ? event.getCategoryName() : "student event",
+                    desc
             );
 
-            // Build request body cho Imagen (khác với Text model)
             String requestBody = buildImageRequestBody(prompt);
-
-            // Gọi Imagen API (endpoint khác: :predict thay vì :generateContent)
-            String responseJson = callGeminiAPI(IMAGE_MODEL + ":predict", requestBody);
+            String responseJson = generateContent(
+                    IMAGE_MODELS,
+                    requestBody,
+                    IMAGE_TIMEOUT_SECONDS
+            );
             if (responseJson == null) return null;
 
-            // Lấy Base64 string từ response
-            String base64Image = extractBase64FromResponse(responseJson);
-            if (base64Image == null) return null;
+            InlineImage image = extractInlineImage(responseJson);
+            if (image == null) return null;
 
-            // Decode Base64 → byte[] → lưu file
-            return saveBase64Image(base64Image);
+            return saveBase64Image(image.data(), image.mimeType());
 
         } catch (Exception e) {
             System.err.println("[GeminiService] Lỗi generateEventImage: " + e.getMessage());
@@ -172,13 +176,10 @@ public class GeminiService {
         }
 
         try {
-            // Build request body với system_instruction + contents array
             String requestBody = buildChatRequestBody(systemPrompt, history);
-
-            // Gọi API
-            String responseJson = callGeminiAPI(TEXT_MODEL + ":generateContent", requestBody);
+            String responseJson = generateContent(TEXT_MODELS, requestBody, TIMEOUT_SECONDS);
             if (responseJson == null) {
-                return "Xin lỗi, tôi không thể trả lời lúc này. Vui lòng thử lại!";
+                return "Hệ thống AI đang quá tải (Google 503). Bạn thử lại sau vài giây nhé!";
             }
 
             // Lấy text từ response
@@ -198,11 +199,11 @@ public class GeminiService {
 
     /**
      * Build JSON body cho request tạo text (summary).
-     *
+     * <p>
      * Format Gemini generateContent:
      * {
-     *   "contents": [{"parts": [{"text": "..."}]}],
-     *   "generationConfig": {"maxOutputTokens": ..., "temperature": ...}
+     * "contents": [{"parts": [{"text": "..."}]}],
+     * "generationConfig": {"maxOutputTokens": ..., "temperature": ...}
      * }
      */
     private String buildTextRequestBody(String prompt,
@@ -235,47 +236,51 @@ public class GeminiService {
     }
 
     /**
-     * Build JSON body cho request tạo ảnh (Imagen).
-     *
-     * Format Imagen predict:
-     * {
-     *   "instances": [{"prompt": "..."}],
-     *   "parameters": {"sampleCount": 1, "aspectRatio": "16:9"}
-     * }
+     * Build JSON body cho Gemini native image (generateContent).
      */
     private String buildImageRequestBody(String prompt) {
         JsonObject root = new JsonObject();
 
-        // instances array
-        JsonArray instances = new JsonArray();
-        JsonObject instance = new JsonObject();
-        instance.addProperty("prompt", prompt);
-        instances.add(instance);
-        root.add("instances", instances);
+        JsonArray contents = new JsonArray();
+        JsonObject content = new JsonObject();
+        content.addProperty("role", "user");
 
-        // parameters
-        JsonObject params = new JsonObject();
-        params.addProperty("sampleCount", 1);
-        params.addProperty("aspectRatio", "16:9");
-        root.add("parameters", params);
+        JsonArray parts = new JsonArray();
+        JsonObject part = new JsonObject();
+        part.addProperty("text", prompt);
+        parts.add(part);
+        content.add("parts", parts);
+        contents.add(content);
+        root.add("contents", contents);
 
+        JsonObject genConfig = new JsonObject();
+        JsonArray modalities = new JsonArray();
+        modalities.add("TEXT");
+        modalities.add("IMAGE");
+        genConfig.add("responseModalities", modalities);
+
+        JsonObject imageConfig = new JsonObject();
+        imageConfig.addProperty("aspectRatio", "16:9");
+        genConfig.add("imageConfig", imageConfig);
+
+        root.add("generationConfig", genConfig);
         return GSON.toJson(root);
     }
 
     /**
      * Build JSON body cho chatbot multi-turn.
-     *
+     * <p>
      * Format:
      * {
-     *   "system_instruction": {"parts": [{"text": "...system prompt..."}]},
-     *   "contents": [
-     *     {"role": "user",  "parts": [{"text": "tin nhắn 1"}]},
-     *     {"role": "model", "parts": [{"text": "trả lời 1"}]},
-     *     ...
-     *   ],
-     *   "generationConfig": {...}
+     * "system_instruction": {"parts": [{"text": "...system prompt..."}]},
+     * "contents": [
+     * {"role": "user",  "parts": [{"text": "tin nhắn 1"}]},
+     * {"role": "model", "parts": [{"text": "trả lời 1"}]},
+     * ...
+     * ],
+     * "generationConfig": {...}
      * }
-     *
+     * <p>
      * LƯU Ý: Gemini dùng "model" thay vì "assistant"!
      */
     private String buildChatRequestBody(String systemPrompt,
@@ -314,8 +319,9 @@ public class GeminiService {
 
         // generationConfig
         JsonObject genConfig = new JsonObject();
-        genConfig.addProperty("maxOutputTokens", 500);
-        genConfig.addProperty("temperature", 0.8);
+        genConfig.addProperty("maxOutputTokens", 1024);
+        genConfig.addProperty("temperature", 0.35);
+        genConfig.addProperty("topP", 0.9);
         root.add("generationConfig", genConfig);
 
         return GSON.toJson(root);
@@ -332,52 +338,106 @@ public class GeminiService {
      * @param requestBody    JSON string
      * @return Response JSON string, hoặc null nếu lỗi
      */
-    private String callGeminiAPI(String modelAndAction, String requestBody) {
-        try {
-            // Build URL: BASE_URL + model:action + ?key=API_KEY
-            String url = BASE_URL + modelAndAction + "?key=" + API_KEY;
-
-            // Tạo HTTP request
-            HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(url))
-                    .header("Content-Type", "application/json")
-                    .POST(HttpRequest.BodyPublishers.ofString(requestBody))
-                    .timeout(Duration.ofSeconds(TIMEOUT_SECONDS))
-                    .build();
-
-            // Gửi request và nhận response
-            HttpResponse<String> response = HTTP_CLIENT.send(
-                    request,
-                    HttpResponse.BodyHandlers.ofString()
-            );
-
-            // Kiểm tra HTTP status code
-            if (response.statusCode() != 200) {
-                System.err.println("[GeminiService] API trả về lỗi: "
-                        + response.statusCode()
-                        + " | " + response.body().substring(0,
-                        Math.min(200, response.body().length())));
+    private String generateContent(String[] models, String requestBody, int timeoutSeconds) {
+        for (String model : models) {
+            GeminiResponse result = callGeminiAPI(model + ":generateContent", requestBody, timeoutSeconds);
+            if (result.ok()) {
+                if (!model.equals(models[0])) {
+                    System.out.println("[GeminiService] Dung model du phong: " + model);
+                }
+                return result.body();
+            }
+            if (result.quotaExceeded()) {
+                System.err.println("[GeminiService] Het quota/rate limit — dung goi AI.");
                 return null;
             }
+        }
+        return null;
+    }
 
-            return response.body();
+    private GeminiResponse callGeminiAPI(String modelAndAction, String requestBody, int timeoutSeconds) {
+        for (int attempt = 1; attempt <= 3; attempt++) {
+            try {
+                String url = BASE_URL + modelAndAction + "?key=" + API_KEY;
+                HttpRequest request = HttpRequest.newBuilder()
+                        .uri(URI.create(url))
+                        .header("Content-Type", "application/json")
+                        .POST(HttpRequest.BodyPublishers.ofString(requestBody))
+                        .timeout(Duration.ofSeconds(timeoutSeconds))
+                        .build();
 
-        } catch (Exception e) {
-            System.err.println("[GeminiService] Lỗi gọi API: " + e.getMessage());
-            return null;
+                HttpResponse<String> response = HTTP_CLIENT.send(
+                        request,
+                        HttpResponse.BodyHandlers.ofString()
+                );
+
+                int status = response.statusCode();
+                if (status == 200) {
+                    return GeminiResponse.ok(response.body());
+                }
+
+                String body = response.body() != null ? response.body() : "";
+                System.err.println("[GeminiService] API tra ve loi: "
+                        + status
+                        + " (" + modelAndAction + ") | "
+                        + body.substring(0, Math.min(220, body.length())));
+
+                if (status == 429) {
+                    return GeminiResponse.quota();
+                }
+                boolean retryable = status == 502 || status == 503;
+                if (!retryable) {
+                    return GeminiResponse.fail();
+                }
+                if (attempt < 3) {
+                    Thread.sleep(600L * attempt);
+                }
+            } catch (InterruptedException ie) {
+                Thread.currentThread().interrupt();
+                return GeminiResponse.fail();
+            } catch (Exception e) {
+                System.err.println("[GeminiService] Loi goi API: " + e.getMessage());
+                if (attempt < 3) {
+                    try {
+                        Thread.sleep(600L * attempt);
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        return GeminiResponse.fail();
+                    }
+                }
+            }
+        }
+        return GeminiResponse.fail();
+    }
+
+    private record GeminiResponse(String body, boolean quotaExceeded) {
+        static GeminiResponse ok(String body) {
+            return new GeminiResponse(body, false);
+        }
+
+        static GeminiResponse quota() {
+            return new GeminiResponse(null, true);
+        }
+
+        static GeminiResponse fail() {
+            return new GeminiResponse(null, false);
+        }
+
+        boolean ok() {
+            return body != null && !quotaExceeded;
         }
     }
 
     /**
      * Trích xuất text từ Gemini generateContent response.
-     *
+     * <p>
      * Cấu trúc JSON response:
      * {
-     *   "candidates": [{
-     *     "content": {
-     *       "parts": [{"text": "KẾT QUẢ Ở ĐÂY"}]
-     *     }
-     *   }]
+     * "candidates": [{
+     * "content": {
+     * "parts": [{"text": "KẾT QUẢ Ở ĐÂY"}]
+     * }
+     * }]
      * }
      */
     private String extractTextFromResponse(String responseJson) {
@@ -395,10 +455,15 @@ public class GeminiService {
             JsonArray parts = content.getAsJsonArray("parts");
             if (parts == null || parts.isEmpty()) return null;
 
-            String text = parts.get(0).getAsJsonObject()
-                    .get("text").getAsString();
-
-            return text.trim();
+            StringBuilder text = new StringBuilder();
+            for (JsonElement partEl : parts) {
+                JsonObject part = partEl.getAsJsonObject();
+                if (part.has("text") && !part.get("text").isJsonNull()) {
+                    text.append(part.get("text").getAsString());
+                }
+            }
+            String result = text.toString().trim();
+            return result.isEmpty() ? null : result;
 
         } catch (Exception e) {
             System.err.println("[GeminiService] Lỗi parse text response: "
@@ -407,66 +472,75 @@ public class GeminiService {
         }
     }
 
+    private record InlineImage(String data, String mimeType) {
+    }
+
     /**
-     * Trích xuất Base64 image từ Imagen response.
-     *
-     * Cấu trúc JSON response Imagen:
-     * {
-     *   "predictions": [{
-     *     "bytesBase64Encoded": "BASE64_STRING_Ở_ĐÂY"
-     *   }]
-     * }
+     * Lấy ảnh từ generateContent: candidates[0].content.parts[].inlineData
      */
-    private String extractBase64FromResponse(String responseJson) {
+    private InlineImage extractInlineImage(String responseJson) {
         try {
             JsonObject json = JsonParser.parseString(responseJson).getAsJsonObject();
+            JsonArray candidates = json.getAsJsonArray("candidates");
+            if (candidates == null || candidates.isEmpty()) {
+                System.err.println("[GeminiService] Image response không có candidates");
+                return null;
+            }
 
-            JsonArray predictions = json.getAsJsonArray("predictions");
-            if (predictions == null || predictions.isEmpty()) return null;
+            JsonObject content = candidates.get(0).getAsJsonObject().getAsJsonObject("content");
+            if (content == null) return null;
 
-            JsonObject prediction = predictions.get(0).getAsJsonObject();
-            JsonElement base64Element = prediction.get("bytesBase64Encoded");
-            if (base64Element == null) return null;
+            JsonArray parts = content.getAsJsonArray("parts");
+            if (parts == null) return null;
 
-            return base64Element.getAsString();
+            for (JsonElement partEl : parts) {
+                JsonObject part = partEl.getAsJsonObject();
+                if (!part.has("inlineData") || !part.get("inlineData").isJsonObject()) {
+                    continue;
+                }
+                JsonObject inline = part.getAsJsonObject("inlineData");
+                if (inline.has("data") && !inline.get("data").isJsonNull()) {
+                    String mime = inline.has("mimeType")
+                            ? inline.get("mimeType").getAsString()
+                            : "image/png";
+                    return new InlineImage(inline.get("data").getAsString(), mime);
+                }
+            }
 
+            System.err.println("[GeminiService] Image response không có inlineData");
+            return null;
         } catch (Exception e) {
-            System.err.println("[GeminiService] Lỗi parse image response: "
-                    + e.getMessage());
+            System.err.println("[GeminiService] Lỗi parse image response: " + e.getMessage());
             return null;
         }
     }
 
     /**
-     * Decode Base64 string thành file ảnh JPG và lưu vào server.
-     *
-     * @param base64Data Chuỗi Base64
-     * @return Tên file đã lưu (ví dụ: "ai_abc123.jpg"), null nếu lỗi
+     * Decode Base64 thành file ảnh và lưu vào uploads/events.
      */
-    private String saveBase64Image(String base64Data) {
+    private String saveBase64Image(String base64Data, String mimeType) {
         try {
-            // Decode Base64 → byte array
             byte[] imageBytes = Base64.getDecoder().decode(base64Data);
+            String extension = extensionFromMime(mimeType);
+            String fileName = "ai_" + UUID.randomUUID() + "." + extension;
 
-            // Tạo tên file ngẫu nhiên (UUID) để tránh trùng
-            String fileName = "ai_" + UUID.randomUUID().toString() + ".jpg";
-
-            // Đường dẫn thư mục lưu
-            Path uploadPath = Paths.get(UPLOAD_DIR, "events");
-
-            // Tạo thư mục nếu chưa có
+            Path uploadPath = UploadConfig.getBaseDir().resolve("events");
             Files.createDirectories(uploadPath);
+            Files.write(uploadPath.resolve(fileName), imageBytes);
 
-            // Lưu file
-            Path filePath = uploadPath.resolve(fileName);
-            Files.write(filePath, imageBytes);
-
-            System.out.println("[GeminiService] Đã lưu ảnh AI: " + fileName);
+            System.out.println("[GeminiService] Da luu anh AI: " + fileName);
             return fileName;
-
         } catch (Exception e) {
             System.err.println("[GeminiService] Lỗi lưu ảnh: " + e.getMessage());
             return null;
         }
+    }
+
+    private static String extensionFromMime(String mimeType) {
+        if (mimeType == null) return "png";
+        String mime = mimeType.toLowerCase();
+        if (mime.contains("jpeg") || mime.contains("jpg")) return "jpg";
+        if (mime.contains("webp")) return "webp";
+        return "png";
     }
 }

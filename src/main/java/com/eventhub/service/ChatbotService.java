@@ -9,19 +9,18 @@ import com.eventhub.model.User;
 import jakarta.servlet.http.HttpSession;
 
 import java.sql.SQLException;
-import java.time.format.DateTimeFormatter;
 import java.util.*;
 
 /**
  * Service xử lý chatbot EventHub AI.
- *
+ * <p>
  * Luồng:
- *   1. Lấy lịch sử chat từ session
- *   2. Lấy context (sự kiện + user) từ DB
- *   3. Build system prompt
- *   4. Gọi GeminiService.chat()
- *   5. Lưu lịch sử vào session
- *   6. Trả về reply
+ * 1. Lấy lịch sử chat từ session
+ * 2. Lấy context (sự kiện + user) từ DB
+ * 3. Build system prompt
+ * 4. Gọi GeminiService.chat()
+ * 5. Lưu lịch sử vào session
+ * 6. Trả về reply
  */
 public class ChatbotService {
 
@@ -31,16 +30,16 @@ public class ChatbotService {
 
     // Key lưu trong session
     private static final String SESSION_HISTORY_KEY = "chatHistory";
-    private static final String SESSION_COUNT_KEY   = "chatCount";
+    private static final String SESSION_COUNT_KEY = "chatCount";
 
     // Giới hạn
-    private static final int MAX_TURNS  = 50;   // Tối đa 50 lượt hỏi/session
-    private static final int MAX_HISTORY = 20;  // Giữ 20 entry lịch sử (10 cặp)
-    private static final int MAX_MSG_LEN = 500; // Tối đa 500 ký tự/tin nhắn
+    private static final int MAX_TURNS = 50;
+    private static final int MAX_HISTORY = 24;
+    private static final int MAX_MSG_LEN = 500;
+    private static final long EVENT_CONTEXT_TTL_MS = 60_000;
 
-    // Format thời gian hiển thị trong chat
-    private static final DateTimeFormatter DT_FORMAT =
-            DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm");
+    private static volatile String cachedEventContext;
+    private static volatile long cachedEventContextAt;
 
     /**
      * Xử lý 1 lượt chat.
@@ -75,25 +74,25 @@ public class ChatbotService {
             List<Map<String, String>> history = getHistory(session);
 
             // --- Lấy context từ DB ---
-            String eventContext  = buildEventContext();
-            String userContext   = buildUserContext(user);
+            String eventContext = buildEventContext();
+            String userContext = buildUserContext(user);
 
             // --- Build system prompt ---
             String systemPrompt = buildSystemPrompt(user, eventContext, userContext);
 
             // --- Thêm tin nhắn user vào history ---
-            Map<String, String> userMsg = new HashMap<>();
-            userMsg.put("role",    "user");
-            userMsg.put("content", message.trim());
+            Map<String, String> userMsg = Map.of(
+                    "role", "user",
+                    "content", message.trim()
+            );
             history.add(userMsg);
 
-            // --- Gọi Gemini ---
             String reply = geminiService.chat(systemPrompt, history);
 
-            // --- Thêm reply vào history ---
-            Map<String, String> assistantMsg = new HashMap<>();
-            assistantMsg.put("role",    "model");  // Gemini dùng "model"
-            assistantMsg.put("content", reply);
+            Map<String, String> assistantMsg = Map.of(
+                    "role", "model",
+                    "content", reply
+            );
             history.add(assistantMsg);
 
             // --- Trim history nếu quá dài ---
@@ -111,10 +110,11 @@ public class ChatbotService {
 
         } catch (SQLException e) {
             System.err.println("[ChatbotService] Lỗi DB: " + e.getMessage());
-            // Vẫn trả lời nhưng không có context sự kiện
+            List<Map<String, String>> fallbackHistory = getHistory(session);
+            fallbackHistory.add(Map.of("role", "user", "content", message.trim()));
             return geminiService.chat(
                     buildSystemPrompt(user, "Hiện không lấy được dữ liệu sự kiện.", ""),
-                    getHistory(session)
+                    fallbackHistory
             );
         }
     }
@@ -156,36 +156,56 @@ public class ChatbotService {
      * Inject vào system prompt để Gemini trả lời chính xác.
      */
     private String buildEventContext() throws SQLException {
+        long now = System.currentTimeMillis();
+        String cached = cachedEventContext;
+        if (cached != null && now - cachedEventContextAt < EVENT_CONTEXT_TTL_MS) {
+            return cached;
+        }
+
         EventFilterDTO filter = new EventFilterDTO();
-        filter.setPageSize(10);
+        filter.setPageSize(20);
         filter.setPage(1);
 
         List<Event> events = eventDAO.findAllForUser(filter);
 
         if (events.isEmpty()) {
-            return "Hiện tại không có sự kiện nào đang mở đăng ký.";
+            cachedEventContext = "Hiện tại không có sự kiện PUBLISHED nào còn diễn ra.";
+            cachedEventContextAt = now;
+            return cachedEventContext;
         }
 
-        StringBuilder sb = new StringBuilder();
-        sb.append("Danh sách sự kiện đang mở:\n");
+        StringBuilder sb = new StringBuilder(2048);
+        sb.append("Dữ liệu sự kiện đang mở (chỉ dùng các mục này, không bịa thêm):\n");
 
         for (Event e : events) {
-            sb.append("• ").append(e.getTitle());
-
+            sb.append("- ID ").append(e.getEventId())
+                    .append(" | ").append(e.getTitle());
             if (e.getCategoryName() != null) {
                 sb.append(" | Danh mục: ").append(e.getCategoryName());
             }
-            if (e.getStartTime() != null) {
-                sb.append(" | Thời gian: ").append(e.getStartTime().format(DT_FORMAT));
-            }
+            sb.append(" | Bắt đầu: ").append(nullSafe(e.getFormattedStartTime()));
+            sb.append(" | Kết thúc: ").append(nullSafe(e.getFormattedEndTime()));
+            sb.append(" | Hạn đăng ký: ").append(nullSafe(e.getFormattedDeadline()));
             if (e.getLocation() != null) {
                 sb.append(" | Địa điểm: ").append(e.getLocation());
             }
-            sb.append(" | Còn ").append(e.getAvailableSlots()).append(" chỗ");
-            sb.append("\n");
+            sb.append(" | Chỗ: ").append(e.getCurrentRegistered())
+                    .append('/').append(e.getMaxParticipants())
+                    .append(" (còn ").append(e.getAvailableSlots()).append(')');
+            sb.append(" | Đăng ký: ").append(e.isRegistrationOpen() ? "CÒN MỞ" : "ĐÃ ĐÓNG");
+            String desc = e.getDescription();
+            if (desc != null && !desc.isBlank()) {
+                if (desc.length() > 220) {
+                    desc = desc.substring(0, 220) + "...";
+                }
+                sb.append(" | Mô tả: ").append(desc.replace('\n', ' '));
+            }
+            sb.append('\n');
         }
 
-        return sb.toString();
+        cachedEventContext = sb.toString();
+        cachedEventContextAt = now;
+        return cachedEventContext;
     }
 
     /**
@@ -218,6 +238,10 @@ public class ChatbotService {
         return sb.toString();
     }
 
+    private static String nullSafe(String value) {
+        return value == null || value.isBlank() ? "chưa có" : value;
+    }
+
     /**
      * Build system prompt đầy đủ với context.
      */
@@ -232,26 +256,37 @@ public class ChatbotService {
             userInfo = "Khách chưa đăng nhập";
         }
 
-        return "Bạn là trợ lý AI của EventHub — hệ thống quản lý sự kiện " +
-                "dành cho sinh viên và tổ chức.\n\n" +
+        return "Bạn là EventHub Assistant — tư vấn sự kiện cho sinh viên, dựa trên dữ liệu thật.\n\n" +
 
-                "Nhiệm vụ của bạn:\n" +
-                "1. Giúp người dùng tìm kiếm và hiểu thông tin sự kiện\n" +
-                "2. Hướng dẫn cách đăng ký, hủy đăng ký sự kiện\n" +
-                "3. Trả lời câu hỏi về hệ thống EventHub\n\n" +
+                "Cách dùng hệ thống:\n" +
+                "- Xem danh sách: trang Sự kiện (/events). Lọc theo danh mục hoặc từ khóa.\n" +
+                "- Chi tiết & đăng ký: vào từng sự kiện, bấm Đăng ký (cần đăng nhập, còn hạn và còn chỗ).\n" +
+                "- Sự kiện của tôi: /my-events. Hủy đăng ký khi sự kiện chưa bắt đầu.\n" +
+                "- Đánh giá: sau khi sự kiện kết thúc, tại /my-events.\n" +
+                "- Admin: dashboard, tạo/sửa sự kiện, xem đăng ký.\n" +
+                "- Liên hệ hỗ trợ: admin@eventhub.com\n\n" +
 
-                "Thông tin người dùng hiện tại:\n" +
-                "Trạng thái: " + userInfo + "\n\n" +
+                "Người dùng hiện tại: " + userInfo + "\n\n" +
 
-                eventContext + "\n\n" +
-                userContext + "\n\n" +
+                eventContext + "\n" +
+                (userContext == null || userContext.isBlank() ? "" : userContext + "\n") +
 
-                "Quy tắc:\n" +
-                "- Luôn trả lời bằng tiếng Việt\n" +
-                "- Ngắn gọn, thân thiện, rõ ràng\n" +
-                "- Không bịa thông tin sự kiện ngoài danh sách trên\n" +
-                "- Nếu không biết → hướng dẫn liên hệ admin@eventhub.com\n" +
-                "- Nếu hỏi về sự kiện không có trong danh sách → " +
-                "gợi ý tìm kiếm trên trang Events";
+                "Định dạng trả lời (markdown, UI sẽ render):\n" +
+                "- Dùng **in đậm** cho số liệu và tên sự kiện quan trọng.\n" +
+                "- Xuống dòng giữa các ý. Không viết một khối dài.\n" +
+                "- Khi liệt kê TỪ 2 sự kiện trở lên: BẮT BUỘC dùng bảng markdown, không dùng danh sách đánh số.\n" +
+                "  Cột đúng thứ tự: Tên | Thời gian | Địa điểm | Còn chỗ | Hạn ĐK\n" +
+                "  Ví dụ:\n" +
+                "  | Tên | Thời gian | Địa điểm | Còn chỗ | Hạn ĐK |\n" +
+                "  |---|---|---|---|---|\n" +
+                "  | Workshop Git | 25/08 10:41 | Lab 1 | 25 | 24/08 18:41 |\n" +
+                "- Sau bảng: 1 câu gợi ý (đăng ký / lọc danh mục).\n" +
+                "- Câu hỏi hướng dẫn (cách đăng ký, hủy): mỗi bước một dòng, dùng danh sách đánh số:\n" +
+                "  1. ...\n" +
+                "  2. ...\n" +
+                "  Không viết dính một đoạn. Có khoảng trắng sau **in đậm**.\n" +
+                "- Chỉ dùng sự kiện trong danh sách trên. Không bịa lịch, địa điểm, số chỗ.\n" +
+                "- Nếu câu hỏi mơ hồ, hỏi lại 1 câu cho rõ.\n" +
+                "- Không tiết lộ API key, SQL, hay chi tiết kỹ thuật nội bộ.";
     }
 }

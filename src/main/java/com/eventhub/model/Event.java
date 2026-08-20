@@ -34,7 +34,10 @@ public class Event {
     private String categoryName;       // Lấy từ bảng categories
     private String createdByName;      // Tên admin tạo (từ bảng users)
 
-    public Event() {}
+    private static final DateTimeFormatter DISPLAY_FORMAT =
+            DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm");
+    private static final DateTimeFormatter INPUT_FORMAT =
+            DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm");
 
     // ===== CÁC METHOD TÍNH TOÁN (không lưu DB) =====
 
@@ -48,10 +51,13 @@ public class Event {
         return currentRegistered >= maxParticipants;
     }
 
-    /** Còn trong thời hạn đăng ký không (published + chưa hết deadline) */
+    /** Còn nhận đăng ký: đã xuất bản, chưa hết hạn, chưa bắt đầu. */
     public boolean isRegistrationOpen() {
-        return "PUBLISHED".equals(status)
-                && LocalDateTime.now().isBefore(registrationDeadline);
+        if (!"PUBLISHED".equals(status) || registrationDeadline == null || startTime == null) {
+            return false;
+        }
+        LocalDateTime now = LocalDateTime.now();
+        return !now.isAfter(registrationDeadline) && startTime.isAfter(now);
     }
 
     /** Sự kiện chưa bắt đầu */
@@ -59,9 +65,13 @@ public class Event {
         return startTime != null && startTime.isAfter(LocalDateTime.now());
     }
 
-    /** Sự kiện đã kết thúc */
+    /** Đã đến giờ kết thúc (cho phép đánh giá). */
     public boolean isEnded() {
-        return endTime != null && endTime.isBefore(LocalDateTime.now());
+        return endTime != null && !endTime.isAfter(LocalDateTime.now());
+    }
+
+    public boolean isCancelled() {
+        return "CANCELLED".equals(status);
     }
 
     /** Tỷ lệ phần trăm chỗ đã đăng ký (dùng cho progress bar) */
@@ -71,41 +81,36 @@ public class Event {
     }
 
     /**
-     * Đường dẫn ảnh để hiển thị trong JSP.
-     * Trả về ảnh default nếu không có ảnh cụ thể.
-     */
-    /**
-     * Đường dẫn ảnh để hiển thị trong JSP (xử lý đúng thư mục events vs defaults)
+     * Đường dẫn ảnh để hiển thị trong JSP (xử lý đúng thư mục events vs defaults).
      */
     public String getDisplayImagePath() {
         if (imagePath != null && !imagePath.isEmpty()) {
             // Nếu là ảnh mặc định -> Trỏ vào thư mục defaults
             if ("DEFAULT".equals(imageSource) || imagePath.startsWith("default_")) {
-                return "/eventhub/uploads/defaults/" + imagePath;
+                return "/uploads/defaults/" + imagePath;
             }
-            // Nếu là ảnh upload hoặc AI -> Trỏ vào thư mục events (có cache-busting)
             String cacheKey = updatedAt != null
                     ? "?v=" + updatedAt.toEpochSecond(java.time.ZoneOffset.UTC)
                     : "";
-            return "/eventhub/uploads/events/" + imagePath + cacheKey;
+            return "/uploads/events/" + imagePath + cacheKey;
         }
-        return "/eventhub/uploads/defaults/default_other.jpg";
+        return "/uploads/defaults/default_other.jpg";
     }
 
     /** Format thời gian đẹp hơn để hiển thị (dd/MM/yyyy HH:mm) */
     public String getFormattedStartTime() {
         if (startTime == null) return "";
-        return startTime.format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm"));
+        return startTime.format(DISPLAY_FORMAT);
     }
 
     public String getFormattedEndTime() {
         if (endTime == null) return "";
-        return endTime.format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm"));
+        return endTime.format(DISPLAY_FORMAT);
     }
 
     public String getFormattedDeadline() {
         if (registrationDeadline == null) return "";
-        return registrationDeadline.format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm"));
+        return registrationDeadline.format(DISPLAY_FORMAT);
     }
 
     /**
@@ -113,23 +118,17 @@ public class Event {
      */
     public String getStartTimeInput() {
         if (startTime == null) return "";
-        return startTime.format(
-                java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm")
-        );
+        return startTime.format(INPUT_FORMAT);
     }
 
     public String getEndTimeInput() {
         if (endTime == null) return "";
-        return endTime.format(
-                java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm")
-        );
+        return endTime.format(INPUT_FORMAT);
     }
 
     public String getRegistrationDeadlineInput() {
         if (registrationDeadline == null) return "";
-        return registrationDeadline.format(
-                java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm")
-        );
+        return registrationDeadline.format(INPUT_FORMAT);
     }
     // ===== GETTERS & SETTERS =====
     public int getEventId() { return eventId; }

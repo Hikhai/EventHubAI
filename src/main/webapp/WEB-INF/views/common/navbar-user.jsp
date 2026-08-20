@@ -1,37 +1,33 @@
 <%@ page contentType="text/html;charset=UTF-8" %>
 <%@ taglib prefix="c" uri="jakarta.tags.core" %>
-<%--
-    Navbar cho User/Guest
-    Hiển thị link đăng nhập nếu chưa login, dropdown user nếu đã login
---%>
+<%@ taglib prefix="fn" uri="jakarta.tags.functions" %>
 
-<nav class="navbar navbar-expand-lg navbar-custom">
+<c:set var="currentUri" value="${pageContext.request.requestURI}"/>
+
+<nav class="navbar navbar-expand-lg navbar-custom" id="mainNavbar">
     <div class="container">
-        <%-- Logo/Brand --%>
         <a class="navbar-brand" href="${pageContext.request.contextPath}/">
-            <i class="bi bi-calendar-event-fill"></i> EventHub AI
+            <span class="brand-mark"><i class="bi bi-calendar-event-fill"></i></span>
+            EventHub AI
         </a>
 
-        <%-- Mobile toggle --%>
         <button class="navbar-toggler" type="button" data-bs-toggle="collapse"
-                data-bs-target="#mainNav">
+                data-bs-target="#mainNav" aria-label="Mở menu">
             <span class="navbar-toggler-icon"></span>
         </button>
 
         <div class="collapse navbar-collapse" id="mainNav">
-            <%-- Menu chính --%>
             <ul class="navbar-nav me-auto">
                 <li class="nav-item">
-                    <a class="nav-link" href="${pageContext.request.contextPath}/events">
+                    <a class="nav-link ${fn:contains(currentUri, '/events') ? 'active' : ''}"
+                       href="${pageContext.request.contextPath}/events">
                         <i class="bi bi-calendar3"></i> Sự kiện
                     </a>
                 </li>
 
-                <%-- Chỉ hiển thị "My Events" nếu đã login và không phải admin --%>
-                <c:if test="${sessionScope.loggedInUser != null
-                              && !sessionScope.loggedInUser.admin}">
+                <c:if test="${sessionScope.loggedInUser != null && !sessionScope.loggedInUser.admin}">
                     <li class="nav-item">
-                        <a class="nav-link"
+                        <a class="nav-link ${fn:contains(currentUri, '/my-events') ? 'active' : ''}"
                            href="${pageContext.request.contextPath}/user/my-events">
                             <i class="bi bi-bookmark-star"></i> Sự kiện của tôi
                         </a>
@@ -39,40 +35,32 @@
                 </c:if>
             </ul>
 
-            <%-- Menu bên phải --%>
-            <ul class="navbar-nav">
-                <%-- Dark mode toggle --%>
+            <ul class="navbar-nav align-items-lg-center gap-lg-1">
                 <li class="nav-item">
-                    <button id="darkModeToggle" class="btn btn-link nav-link"
-                            title="Chuyển giao diện">
+                    <button id="darkModeToggle" class="btn btn-link nav-link" title="Đổi giao diện" type="button">
                         <i id="darkModeIcon" class="bi bi-moon-fill"></i>
                     </button>
                 </li>
 
                 <c:choose>
-                    <%-- Chưa đăng nhập --%>
                     <c:when test="${sessionScope.loggedInUser == null}">
                         <li class="nav-item">
-                            <a class="nav-link"
-                               href="${pageContext.request.contextPath}/auth/login">
+                            <a class="nav-link" href="${pageContext.request.contextPath}/auth/login">
                                 Đăng nhập
                             </a>
                         </li>
                         <li class="nav-item">
-                            <a class="btn btn-primary-gradient ms-2"
+                            <a class="btn btn-primary-gradient ms-lg-2"
                                href="${pageContext.request.contextPath}/auth/register">
                                 Đăng ký
                             </a>
                         </li>
                     </c:when>
-
-                    <%-- Đã đăng nhập --%>
                     <c:otherwise>
                         <li class="nav-item dropdown">
-                            <a class="nav-link dropdown-toggle" href="#"
-                               data-bs-toggle="dropdown">
-                                <i class="bi bi-person-circle"></i>
-                                    ${sessionScope.loggedInUser.fullName}
+                            <a class="nav-link dropdown-toggle user-chip" href="#" data-bs-toggle="dropdown">
+                                <span class="user-avatar">${fn:substring(sessionScope.loggedInUser.fullName, 0, 1)}</span>
+                                ${sessionScope.loggedInUser.fullName}
                             </a>
                             <ul class="dropdown-menu dropdown-menu-end">
                                 <c:if test="${sessionScope.loggedInUser.admin}">
@@ -85,7 +73,6 @@
                                     <li><hr class="dropdown-divider"></li>
                                 </c:if>
                                 <li>
-                                        <%-- Logout dùng form POST --%>
                                     <form method="post"
                                           action="${pageContext.request.contextPath}/auth/logout"
                                           class="m-0">
@@ -103,8 +90,6 @@
     </div>
 </nav>
 
-<%-- ===== FLASH MESSAGES ===== --%>
-<%-- Đọc từ session và XÓA ngay sau khi hiển thị --%>
 <c:if test="${not empty sessionScope.successMsg}">
     <div class="alert alert-success alert-flash alert-dismissible fade show" role="alert">
         <i class="bi bi-check-circle"></i> ${sessionScope.successMsg}

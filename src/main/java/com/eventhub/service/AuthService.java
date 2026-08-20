@@ -64,22 +64,22 @@ public class AuthService {
                                        String password, String confirmPassword)
             throws AuthException {
 
-        // Họ tên
         if (ValidationUtil.isBlank(fullName)) {
             throw new AuthException("Vui lòng nhập họ và tên.");
         }
-        if (fullName.trim().length() < 2 || fullName.trim().length() > 100) {
+        String trimmedName = fullName.trim();
+        if (trimmedName.length() < 2 || trimmedName.length() > 100) {
             throw new AuthException("Họ và tên phải từ 2 đến 100 ký tự.");
         }
 
-        // Email
         if (ValidationUtil.isBlank(email)) {
             throw new AuthException("Vui lòng nhập email.");
         }
-        if (!ValidationUtil.isValidEmail(email.trim())) {
+        String trimmedEmail = email.trim();
+        if (!ValidationUtil.isValidEmail(trimmedEmail)) {
             throw new AuthException("Email không đúng định dạng.");
         }
-        if (email.trim().length() > 150) {
+        if (trimmedEmail.length() > 150) {
             throw new AuthException("Email không được vượt quá 150 ký tự.");
         }
 

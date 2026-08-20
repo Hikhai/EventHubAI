@@ -37,3 +37,10 @@ build/
 
 ### Mac OS ###
 .DS_Store
+
+### IntelliJ build output ###
+out/
+
+### Uploads runtime (giữ ảnh mặc định) ###
+src/main/webapp/uploads/events/*
+!src/main/webapp/uploads/events/.gitkeep

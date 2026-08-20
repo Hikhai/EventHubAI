@@ -53,7 +53,9 @@ public class EventDetailServlet extends HttpServlet {
             User user = (User) req.getSession().getAttribute("loggedInUser");
             boolean isAdmin = (user != null && user.isAdmin());
 
-            if (!isAdmin && !"PUBLISHED".equals(event.getStatus())) {
+            if (!isAdmin
+                    && !"PUBLISHED".equals(event.getStatus())
+                    && !"COMPLETED".equals(event.getStatus())) {
                 resp.sendRedirect(req.getContextPath() + "/events");
                 return;
             }

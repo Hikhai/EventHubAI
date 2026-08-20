@@ -93,10 +93,21 @@ public class AdminEventFormServlet extends HttpServlet {
                 String idStr = req.getParameter("eventId");
                 event.setEventId(Integer.parseInt(idStr));
 
-                eventService.updateEvent(event, imagePart);
+                boolean regenerateAi = "1".equals(req.getParameter("regenerateAi"))
+                        || "on".equals(req.getParameter("regenerateAi"));
 
-                req.getSession().setAttribute("successMsg",
-                        "Cập nhật sự kiện thành công!");
+                String imageResult = eventService.updateEvent(event, imagePart, regenerateAi);
+
+                switch (imageResult) {
+                    case "AI_OK" -> req.getSession().setAttribute("successMsg",
+                            "Cập nhật sự kiện thành công và đã tạo ảnh AI mới.");
+                    case "AI_FAILED" -> req.getSession().setAttribute("successMsg",
+                            "Cập nhật sự kiện thành công. Không tạo được ảnh AI (quota/lỗi API), ảnh cũ được giữ lại.");
+                    case "UPLOAD_FAILED" -> req.getSession().setAttribute("successMsg",
+                            "Cập nhật sự kiện thành công nhưng upload ảnh thất bại, ảnh cũ được giữ lại.");
+                    default -> req.getSession().setAttribute("successMsg",
+                            "Cập nhật sự kiện thành công!");
+                }
 
             } else {
                 // --- TẠO MỚI ---

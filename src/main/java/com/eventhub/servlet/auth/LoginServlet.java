@@ -50,14 +50,15 @@ public class LoginServlet extends HttpServlet {
             // Gọi service xử lý
             User user = authService.login(email, password);
 
-            // Tạo session MỚI sau đăng nhập (tránh session fixation attack)
-            req.getSession().invalidate();
+            HttpSession oldSession = req.getSession(false);
+            String redirectUrl = null;
+            if (oldSession != null) {
+                redirectUrl = (String) oldSession.getAttribute("redirectAfterLogin");
+                oldSession.invalidate();
+            }
+
             HttpSession newSession = req.getSession(true);
             newSession.setAttribute("loggedInUser", user);
-
-            // Lấy URL để redirect (nếu user bị chặn trước đó)
-            String redirectUrl = (String) newSession.getAttribute("redirectAfterLogin");
-            newSession.removeAttribute("redirectAfterLogin");
 
             if (redirectUrl != null && !redirectUrl.isBlank()) {
                 resp.sendRedirect(redirectUrl);

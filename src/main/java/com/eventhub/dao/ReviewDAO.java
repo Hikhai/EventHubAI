@@ -12,31 +12,27 @@ import java.util.List;
  */
 public class ReviewDAO {
 
-    /**
-     * Tìm review của một user cho một event.
-     * Dùng để kiểm tra user đã review chưa.
-     */
     public Review findByUserAndEvent(int userId, int eventId) throws SQLException {
+        try (Connection conn = DBConnection.getConnection()) {
+            return findByUserAndEvent(userId, eventId, conn);
+        }
+    }
+
+    public Review findByUserAndEvent(int userId, int eventId, Connection conn) throws SQLException {
         String sql = "SELECT r.*, u.full_name AS user_full_name " +
                 "FROM reviews r JOIN users u ON r.user_id = u.user_id " +
                 "WHERE r.user_id = ? AND r.event_id = ?";
 
-        try (Connection conn = DBConnection.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(sql)) {
-
+        try (PreparedStatement stmt = conn.prepareStatement(sql)) {
             stmt.setInt(1, userId);
             stmt.setInt(2, eventId);
-            ResultSet rs = stmt.executeQuery();
-
-            if (rs.next()) return mapResultSet(rs);
-            return null;
+            try (ResultSet rs = stmt.executeQuery()) {
+                if (rs.next()) return mapResultSet(rs);
+                return null;
+            }
         }
     }
 
-    /**
-     * Lấy tất cả reviews của một event (kèm tên user).
-     * Dùng hiển thị trong trang chi tiết sự kiện.
-     */
     public List<Review> findAllByEvent(int eventId) throws SQLException {
         String sql = "SELECT r.*, u.full_name AS user_full_name " +
                 "FROM reviews r JOIN users u ON r.user_id = u.user_id " +
@@ -44,61 +40,50 @@ public class ReviewDAO {
 
         try (Connection conn = DBConnection.getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql)) {
-
             stmt.setInt(1, eventId);
             List<Review> list = new ArrayList<>();
-            ResultSet rs = stmt.executeQuery();
-            while (rs.next()) list.add(mapResultSet(rs));
+            try (ResultSet rs = stmt.executeQuery()) {
+                while (rs.next()) list.add(mapResultSet(rs));
+            }
             return list;
         }
     }
 
-    /**
-     * Thêm review mới (trong transaction để cập nhật rating cùng lúc).
-     */
     public void insert(int userId, int eventId, int rating,
                        String comment, Connection conn) throws SQLException {
         String sql = "INSERT INTO reviews (user_id, event_id, rating, comment) VALUES (?, ?, ?, ?)";
-        PreparedStatement stmt = conn.prepareStatement(sql);
-        stmt.setInt(1, userId);
-        stmt.setInt(2, eventId);
-        stmt.setInt(3, rating);
+        try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setInt(1, userId);
+            stmt.setInt(2, eventId);
+            stmt.setInt(3, rating);
 
-        // Comment có thể null
-        if (comment != null && !comment.trim().isEmpty()) {
-            stmt.setString(4, comment.trim());
-        } else {
-            stmt.setNull(4, Types.VARCHAR);
+            if (comment != null && !comment.trim().isEmpty()) {
+                stmt.setString(4, comment.trim());
+            } else {
+                stmt.setNull(4, Types.VARCHAR);
+            }
+
+            stmt.executeUpdate();
         }
-
-        stmt.executeUpdate();
     }
 
-    /**
-     * Tính rating trung bình tổng hợp của toàn hệ thống (cho Dashboard).
-     */
     public double getOverallAvgRating() throws SQLException {
         String sql = "SELECT COALESCE(AVG(rating), 0) FROM reviews";
 
         try (Connection conn = DBConnection.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(sql)) {
-
-            ResultSet rs = stmt.executeQuery();
+             PreparedStatement stmt = conn.prepareStatement(sql);
+             ResultSet rs = stmt.executeQuery()) {
             rs.next();
             return rs.getDouble(1);
         }
     }
 
-    /**
-     * Đếm tổng số reviews trong hệ thống.
-     */
     public int countAll() throws SQLException {
         String sql = "SELECT COUNT(*) FROM reviews";
 
         try (Connection conn = DBConnection.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(sql)) {
-
-            ResultSet rs = stmt.executeQuery();
+             PreparedStatement stmt = conn.prepareStatement(sql);
+             ResultSet rs = stmt.executeQuery()) {
             rs.next();
             return rs.getInt(1);
         }

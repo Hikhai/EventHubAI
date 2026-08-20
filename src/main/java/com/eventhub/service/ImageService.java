@@ -1,5 +1,6 @@
 package com.eventhub.service;
 
+import com.eventhub.config.UploadConfig;
 import com.eventhub.dao.EventDAO;
 import com.eventhub.exception.FileException;
 import com.eventhub.model.Event;
@@ -19,8 +20,6 @@ public class ImageService {
     private final EventDAO eventDAO = new EventDAO();
     private final GeminiService geminiService = new GeminiService();
 
-    private static final String UPLOAD_BASE_DIR = System.getenv("UPLOAD_BASE_DIR");
-
     private static final Set<String> ALLOWED_TYPES = Set.of(
             "image/jpeg", "image/jpg", "image/png", "image/webp"
     );
@@ -28,12 +27,12 @@ public class ImageService {
     private static final long MAX_FILE_SIZE = 5L * 1024 * 1024; // 5MB
 
     private static final Map<String, String> DEFAULT_IMAGE_MAP = Map.of(
-            "Hội thảo",             "default_hoithao.jpg",
-            "Workshop",             "default_workshop.jpg",
-            "Buổi họp",             "default_hoihop.jpg",
+            "Hội thảo", "default_hoithao.jpg",
+            "Workshop", "default_workshop.jpg",
+            "Buổi họp", "default_hoihop.jpg",
             "Hoạt động ngoại khóa", "default_ngoaikhoa.jpg",
-            "Cuộc thi",             "default_cuocthi.jpg",
-            "Khác",                 "default_other.jpg"
+            "Cuộc thi", "default_cuocthi.jpg",
+            "Khác", "default_other.jpg"
     );
 
     // =====================================================
@@ -42,16 +41,11 @@ public class ImageService {
 
     /**
      * Khi TẠO MỚI sự kiện:
-     *   - Nếu có upload file -> Dùng file upload
-     *   - Nếu KHÔNG upload   -> Thử Gemini AI -> Thất bại -> Dùng Default
+     * - Nếu có upload file -> Dùng file upload
+     * - Nếu KHÔNG upload   -> Thử Gemini AI -> Thất bại -> Dùng Default
      */
     public void processImageForCreate(Event event, Part imagePart) {
-        boolean hasUpload = imagePart != null
-                && imagePart.getSize() > 0
-                && imagePart.getSubmittedFileName() != null
-                && !imagePart.getSubmittedFileName().trim().isEmpty();
-
-        if (hasUpload) {
+        if (hasUploadedFile(imagePart)) {
             try {
                 saveUploadedImage(event, imagePart);
             } catch (Exception e) {
@@ -59,7 +53,6 @@ public class ImageService {
                 setDefaultImage(event);
             }
         } else {
-            // Không upload -> Thử AI
             tryAIOrSetDefault(event);
         }
     }
@@ -70,23 +63,26 @@ public class ImageService {
 
     /**
      * Khi CẬP NHẬT sự kiện:
-     *   - Chỉ xử lý NẾU Admin chọn file mới
-     *   - Tuyệt đối KHÔNG gọi AI hay gán default nếu không chọn file mới (giữ ảnh cũ)
+     * 1. Có file upload → dùng file mới
+     * 2. Tick "tạo ảnh AI" → gen AI thay ảnh cũ (thất bại thì giữ ảnh cũ)
+     * 3. Không chọn gì → giữ ảnh cũ
      */
-    public void processImageForUpdate(Event event, Part imagePart) {
-        boolean hasNewUpload = imagePart != null
-                && imagePart.getSize() > 0
-                && imagePart.getSubmittedFileName() != null
-                && !imagePart.getSubmittedFileName().trim().isEmpty();
-
-        if (hasNewUpload) {
+    public String processImageForUpdate(Event event, Part imagePart, boolean regenerateAi) {
+        if (hasUploadedFile(imagePart)) {
             try {
                 saveUploadedImage(event, imagePart);
+                return "UPLOADED";
             } catch (Exception e) {
                 System.err.println("[ImageService] Lỗi upload ảnh cập nhật: " + e.getMessage());
+                return "UPLOAD_FAILED";
             }
         }
-        // Nếu không chọn file mới -> KHÔNG LÀM GÌ CẢ (Giữ nguyên ảnh cũ trong DB)
+
+        if (regenerateAi) {
+            return tryReplaceWithAiImage(event) ? "AI_OK" : "AI_FAILED";
+        }
+
+        return "UNCHANGED";
     }
 
     // =====================================================
@@ -116,7 +112,7 @@ public class ImageService {
         String newFileName = "event_" + UUID.randomUUID().toString() + "." + extension;
 
         // Lưu file vào thư mục uploads/events
-        Path uploadPath = Paths.get(UPLOAD_BASE_DIR, "events");
+        Path uploadPath = UploadConfig.getBaseDir().resolve("events");
         Files.createDirectories(uploadPath);
 
         Path filePath = uploadPath.resolve(newFileName);
@@ -144,15 +140,36 @@ public class ImageService {
                 eventDAO.updateImage(event.getEventId(), aiFileName, "AI_GENERATED");
                 event.setImagePath(aiFileName);
                 event.setImageSource("AI_GENERATED");
-                System.out.println("[ImageService] ✅ Tạo ảnh AI thành công: " + aiFileName);
+                System.out.println("[ImageService] Tao anh AI thanh cong: " + aiFileName);
                 return;
             } catch (Exception e) {
                 System.err.println("[ImageService] Lỗi lưu DB ảnh AI: " + e.getMessage());
             }
         }
 
-        // Nếu AI thất bại -> Set Default
         setDefaultImage(event);
+    }
+
+    /**
+     * Tạo ảnh AI và thay ảnh cũ. Không đổi sang default nếu AI thất bại.
+     */
+    private boolean tryReplaceWithAiImage(Event event) {
+        System.out.println("[ImageService] Admin yeu cau tao lai anh AI...");
+        String aiFileName = geminiService.generateEventImage(event);
+        if (aiFileName == null) {
+            return false;
+        }
+        try {
+            deleteOldImageFile(event);
+            eventDAO.updateImage(event.getEventId(), aiFileName, "AI_GENERATED");
+            event.setImagePath(aiFileName);
+            event.setImageSource("AI_GENERATED");
+            System.out.println("[ImageService] Da thay anh bang AI: " + aiFileName);
+            return true;
+        } catch (Exception e) {
+            System.err.println("[ImageService] Loi luu anh AI khi sua: " + e.getMessage());
+            return false;
+        }
     }
 
     /**
@@ -181,7 +198,7 @@ public class ImageService {
 
         if (oldPath != null && ("UPLOADED".equals(oldSource) || "AI_GENERATED".equals(oldSource))) {
             try {
-                Path filePath = Paths.get(UPLOAD_BASE_DIR, "events", oldPath);
+                Path filePath = UploadConfig.getBaseDir().resolve("events").resolve(oldPath);
                 Files.deleteIfExists(filePath);
                 System.out.println("[ImageService] 🗑️ Đã xóa file cũ: " + oldPath);
             } catch (Exception e) {
@@ -190,11 +207,18 @@ public class ImageService {
         }
     }
 
+    private boolean hasUploadedFile(Part imagePart) {
+        return imagePart != null
+                && imagePart.getSize() > 0
+                && imagePart.getSubmittedFileName() != null
+                && !imagePart.getSubmittedFileName().trim().isEmpty();
+    }
+
     private String getExtension(String contentType) {
         return switch (contentType.toLowerCase()) {
-            case "image/png"  -> "png";
+            case "image/png" -> "png";
             case "image/webp" -> "webp";
-            default           -> "jpg";
+            default -> "jpg";
         };
     }
 }

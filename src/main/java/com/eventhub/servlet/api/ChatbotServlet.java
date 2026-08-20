@@ -38,13 +38,7 @@ public class ChatbotServlet extends HttpServlet {
         // Nếu không có form param → thử đọc JSON body
         if (message == null || message.trim().isEmpty()) {
             try {
-                StringBuilder sb = new StringBuilder();
-                String line;
-                var reader = req.getReader();
-                while ((line = reader.readLine()) != null) {
-                    sb.append(line);
-                }
-                String body = sb.toString();
+                String body = req.getReader().lines().reduce("", (a, b) -> a + b);
                 if (!body.isEmpty()) {
                     JsonObject bodyJson = JsonParser.parseString(body).getAsJsonObject();
                     if (bodyJson.has("message")) {

@@ -1,9 +1,15 @@
 package com.eventhub.util;
 
+import java.util.regex.Pattern;
+
 /**
  * Utility class chứa các hàm validate input thường dùng.
  */
 public class ValidationUtil {
+
+    private static final Pattern EMAIL_PATTERN = Pattern.compile(
+            "^[a-zA-Z0-9._%+\\-]+@[a-zA-Z0-9.\\-]+\\.[a-zA-Z]{2,}$"
+    );
 
     private ValidationUtil() {}
 
@@ -14,12 +20,10 @@ public class ValidationUtil {
 
     /**
      * Kiểm tra format email hợp lệ.
-     * Regex đơn giản nhưng đủ dùng cho project này.
      */
     public static boolean isValidEmail(String email) {
         if (isBlank(email)) return false;
-        String regex = "^[a-zA-Z0-9._%+\\-]+@[a-zA-Z0-9.\\-]+\\.[a-zA-Z]{2,}$";
-        return email.matches(regex);
+        return EMAIL_PATTERN.matcher(email).matches();
     }
 
     /**
@@ -34,11 +38,17 @@ public class ValidationUtil {
         int len = password.length();
         if (len < 8 || len > 50) return false;
 
-        boolean hasUpper  = password.chars().anyMatch(Character::isUpperCase);
-        boolean hasLower  = password.chars().anyMatch(Character::isLowerCase);
-        boolean hasDigit  = password.chars().anyMatch(Character::isDigit);
-
-        return hasUpper && hasLower && hasDigit;
+        boolean hasUpper = false;
+        boolean hasLower = false;
+        boolean hasDigit = false;
+        for (int i = 0; i < len; i++) {
+            char c = password.charAt(i);
+            if (Character.isUpperCase(c)) hasUpper = true;
+            else if (Character.isLowerCase(c)) hasLower = true;
+            else if (Character.isDigit(c)) hasDigit = true;
+            if (hasUpper && hasLower && hasDigit) return true;
+        }
+        return false;
     }
 
     /**

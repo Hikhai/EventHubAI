@@ -12,8 +12,7 @@
         <div class="auth-hero-content">
             <h1><i class="bi bi-calendar-event-fill"></i> EventHub AI</h1>
             <p>
-                Chào mừng bạn quay lại! Đăng nhập để khám phá và đăng ký
-                các sự kiện thú vị dành cho sinh viên.
+                Tìm sự kiện, đăng ký nhanh và nhận gợi ý phù hợp — tất cả trong một nơi.
             </p>
 
             <div class="auth-stats">
@@ -40,8 +39,8 @@
     <%-- ===== RIGHT PANEL - FORM ===== --%>
     <div class="auth-form-panel">
         <div class="auth-form">
-            <h2>Đăng nhập</h2>
-            <p class="subtitle">Nhập thông tin để tiếp tục</p>
+            <h2>Chào mừng trở lại</h2>
+            <p class="subtitle">Đăng nhập để tiếp tục khám phá sự kiện</p>
 
             <%-- Hiển thị lỗi nếu có --%>
             <c:if test="${not empty errorMsg}">
@@ -96,9 +95,8 @@
             </div>
 
             <%-- Info accounts mẫu (chỉ dev/demo) --%>
-            <div class="mt-4 p-3 rounded"
-                 style="background:#F1F5F9; font-size:0.85rem;">
-                <strong>Tài khoản demo:</strong><br>
+            <div class="demo-accounts">
+                <strong>Tài khoản demo</strong><br>
                 Admin: <code>admin@eventhub.com</code> / <code>Admin@123</code><br>
                 User: <code>an@example.com</code> / <code>User@123</code>
             </div>

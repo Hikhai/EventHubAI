@@ -11,6 +11,7 @@ import jakarta.servlet.http.Part;
 
 import java.sql.SQLException;
 import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 
 /**
@@ -86,7 +87,7 @@ public class EventService {
     public int createEvent(Event event, Part imagePart, int adminId)
             throws EventException, SQLException {
 
-        validateEventInput(event, true);
+        validateEventInput(event, null);
         event.setCreatedBy(adminId);
 
         int eventId = eventDAO.insert(event);
@@ -106,7 +107,10 @@ public class EventService {
     // =====================================================
     // CẬP NHẬT SỰ KIỆN
     // =====================================================
-    public void updateEvent(Event event, Part imagePart)
+    /**
+     * @return kết quả xử lý ảnh: UPLOADED, UPLOAD_FAILED, AI_OK, AI_FAILED, UNCHANGED
+     */
+    public String updateEvent(Event event, Part imagePart, boolean regenerateAi)
             throws EventException, SQLException {
 
         Event existing = eventDAO.findById(event.getEventId());
@@ -114,14 +118,14 @@ public class EventService {
             throw new EventException("Sự kiện không tồn tại.");
         }
 
-        if ("COMPLETED".equals(existing.getStatus())) {
-            throw new EventException("Không thể chỉnh sửa sự kiện đã hoàn thành.");
+        if (existing.isEnded() || "COMPLETED".equals(existing.getStatus())) {
+            throw new EventException("Không thể chỉnh sửa sự kiện đã kết thúc.");
         }
         if ("CANCELLED".equals(existing.getStatus())) {
             throw new EventException("Không thể chỉnh sửa sự kiện đã hủy.");
         }
 
-        validateEventInput(event, false);
+        validateEventInput(event, existing);
 
         if (event.getMaxParticipants() < existing.getCurrentRegistered()) {
             throw new EventException("Số người tối đa không thể nhỏ hơn số người đã đăng ký ("
@@ -140,8 +144,8 @@ public class EventService {
             event.setCategoryName(category.getCategoryName());
         }
 
-        // Luồng ảnh cho CẬP NHẬT (Chỉ đổi nếu chọn file mới)
-        imageService.processImageForUpdate(event, imagePart);
+        // Luồng ảnh: upload file > tạo lại AI > giữ ảnh cũ
+        return imageService.processImageForUpdate(event, imagePart, regenerateAi);
     }
 
     // =====================================================
@@ -158,60 +162,30 @@ public class EventService {
         if (activeRegistrations == 0) {
             eventDAO.delete(eventId);
             return "DELETED";
-        } else {
-            cancelEventWithRegistrations(eventId);
-            return "CANCELLED";
         }
-    }
-
-    private void cancelEventWithRegistrations(int eventId) throws SQLException {
-        java.sql.Connection conn = null;
-        try {
-            conn = com.eventhub.config.DBConnection.getConnection();
-            conn.setAutoCommit(false);
-
-            String cancelRegs =
-                    "UPDATE registrations SET status='CANCELLED', cancelled_at=NOW() " +
-                            "WHERE event_id=? AND status='REGISTERED'";
-            java.sql.PreparedStatement s1 = conn.prepareStatement(cancelRegs);
-            s1.setInt(1, eventId);
-            s1.executeUpdate();
-
-            String cancelEvent =
-                    "UPDATE events SET status='CANCELLED' WHERE event_id=?";
-            java.sql.PreparedStatement s2 = conn.prepareStatement(cancelEvent);
-            s2.setInt(1, eventId);
-            s2.executeUpdate();
-
-            conn.commit();
-        } catch (SQLException e) {
-            if (conn != null) conn.rollback();
-            throw e;
-        } finally {
-            if (conn != null) {
-                conn.setAutoCommit(true);
-                conn.close();
-            }
-        }
+        eventDAO.cancelEventAndRegistrations(eventId);
+        return "CANCELLED";
     }
 
     // =====================================================
     // VALIDATE INPUT
     // =====================================================
-    private void validateEventInput(Event event, boolean isCreating)
+    private void validateEventInput(Event event, Event existing)
             throws EventException {
 
-        if (event.getTitle() == null || event.getTitle().trim().isEmpty()) {
+        String title = event.getTitle() == null ? "" : event.getTitle().trim();
+        if (title.isEmpty()) {
             throw new EventException("Vui lòng nhập tên sự kiện.");
         }
-        if (event.getTitle().trim().length() < 5 || event.getTitle().trim().length() > 200) {
+        if (title.length() < 5 || title.length() > 200) {
             throw new EventException("Tên sự kiện phải từ 5 đến 200 ký tự.");
         }
 
-        if (event.getDescription() == null || event.getDescription().trim().isEmpty()) {
+        String description = event.getDescription() == null ? "" : event.getDescription().trim();
+        if (description.isEmpty()) {
             throw new EventException("Vui lòng nhập mô tả sự kiện.");
         }
-        if (event.getDescription().trim().length() < 20) {
+        if (description.length() < 20) {
             throw new EventException("Mô tả sự kiện phải có ít nhất 20 ký tự.");
         }
 
@@ -237,8 +211,33 @@ public class EventService {
             throw new EventException("Hạn đăng ký phải trước hoặc bằng thời gian bắt đầu.");
         }
 
-        if (isCreating && !event.getStartTime().isAfter(LocalDateTime.now().plusHours(1))) {
-            throw new EventException("Thời gian bắt đầu phải sau hiện tại ít nhất 1 giờ.");
+        LocalDateTime now = LocalDateTime.now();
+        boolean creating = existing == null;
+
+        if (creating) {
+            if (!event.getStartTime().isAfter(now.plusHours(1))) {
+                throw new EventException("Thời gian bắt đầu phải sau hiện tại ít nhất 1 giờ.");
+            }
+            if (!event.getRegistrationDeadline().isAfter(now)) {
+                throw new EventException("Hạn đăng ký phải sau thời điểm hiện tại.");
+            }
+        } else if (!existing.isUpcoming()) {
+            if (!sameMinute(existing.getStartTime(), event.getStartTime())
+                    || !sameMinute(existing.getRegistrationDeadline(), event.getRegistrationDeadline())) {
+                throw new EventException(
+                        "Sự kiện đã bắt đầu, không thể đổi giờ bắt đầu hoặc hạn đăng ký.");
+            }
+            if (!event.getEndTime().isAfter(now)) {
+                throw new EventException("Thời gian kết thúc phải sau hiện tại.");
+            }
+        } else {
+            if (!event.getStartTime().isAfter(now)) {
+                throw new EventException("Thời gian bắt đầu phải sau hiện tại.");
+            }
+            if ("PUBLISHED".equals(event.getStatus())
+                    && !event.getRegistrationDeadline().isAfter(now)) {
+                throw new EventException("Hạn đăng ký phải sau hiện tại khi xuất bản sự kiện.");
+            }
         }
 
         if (event.getMaxParticipants() <= 0) {
@@ -256,5 +255,11 @@ public class EventService {
         if (!"DRAFT".equals(status) && !"PUBLISHED".equals(status)) {
             throw new EventException("Trạng thái không hợp lệ.");
         }
+    }
+
+    private static boolean sameMinute(LocalDateTime a, LocalDateTime b) {
+        if (a == null || b == null) return a == b;
+        return a.truncatedTo(ChronoUnit.MINUTES)
+                .equals(b.truncatedTo(ChronoUnit.MINUTES));
     }
 }

@@ -8,7 +8,7 @@
 
 <%-- ===== HERO BANNER ===== --%>
 <div class="event-hero-banner">
-    <img src="${event.displayImagePath}" alt="${event.title}"
+    <img src="${pageContext.request.contextPath}${event.displayImagePath}" alt="${event.title}"
          onerror="this.src='${pageContext.request.contextPath}/uploads/defaults/default_other.jpg'">
     <div class="event-hero-overlay"></div>
     <div class="event-hero-content">
@@ -105,7 +105,7 @@
 
             <%-- Mô tả chi tiết --%>
             <div class="event-description">
-                <h3>📋 Về sự kiện</h3>
+                <h3>Về sự kiện</h3>
                 <p style="white-space: pre-line;">${event.description}</p>
             </div>
 
@@ -136,11 +136,12 @@
                 <c:if test="${sessionScope.loggedInUser != null
                               && !sessionScope.loggedInUser.admin
                               && event.ended
+                              && !event.cancelled
                               && userRegistration != null
                               && userRegistration.status == 'REGISTERED'
                               && userReview == null}">
                     <div class="alert alert-info">
-                        <strong>✨ Bạn đã tham gia sự kiện này!</strong> Chia sẻ đánh giá của bạn:
+                        <strong>Bạn đã tham gia sự kiện này.</strong> Chia sẻ đánh giá của bạn:
                     </div>
                     <form method="post"
                           action="${pageContext.request.contextPath}/user/submit-review"
@@ -226,7 +227,7 @@
         <%-- ===== CỘT PHẢI - SIDEBAR ĐĂNG KÝ ===== --%>
         <div class="col-lg-4">
             <div class="registration-card">
-                <h4>🎫 Đăng ký tham gia</h4>
+                <h4>Đăng ký tham gia</h4>
 
                 <%-- Progress bar --%>
                 <div class="slot-progress" style="height: 10px; margin: 1rem 0;">
@@ -249,16 +250,7 @@
 
                 <%-- ===== 8 CASE HIỂN THỊ NÚT ACTION ===== --%>
                 <c:choose>
-                    <%-- CASE 1: Guest chưa đăng nhập --%>
-                    <c:when test="${sessionScope.loggedInUser == null}">
-                        <a href="${pageContext.request.contextPath}/auth/login"
-                           class="btn-register d-block text-center text-decoration-none">
-                            <i class="bi bi-box-arrow-in-right"></i>
-                            Đăng nhập để đăng ký
-                        </a>
-                    </c:when>
-
-                    <%-- CASE 8: Admin xem trang --%>
+                    <%-- Admin --%>
                     <c:when test="${sessionScope.loggedInUser.admin}">
                         <a href="${pageContext.request.contextPath}/admin/events/edit?id=${event.eventId}"
                            class="btn-register d-block text-center text-decoration-none">
@@ -266,47 +258,68 @@
                         </a>
                     </c:when>
 
-                    <%-- CASE 5-6: User đã REGISTERED --%>
-                    <c:when test="${userRegistration != null
-                                    && userRegistration.status == 'REGISTERED'}">
+                    <c:when test="${event.cancelled}">
+                        <div class="status-message expired">
+                            <i class="bi bi-x-circle-fill"></i>
+                            Sự kiện đã bị hủy
+                        </div>
+                    </c:when>
+
+                    <c:when test="${event.ended}">
                         <c:choose>
-                            <c:when test="${event.ended}">
-                                <%-- CASE 6: Đã kết thúc --%>
+                            <c:when test="${userRegistration != null
+                                            && userRegistration.status == 'REGISTERED'}">
                                 <div class="status-message attended">
                                     <i class="bi bi-check-circle-fill"></i>
                                     Bạn đã tham gia sự kiện này
                                 </div>
                             </c:when>
                             <c:otherwise>
-                                <%-- CASE 5: Chưa bắt đầu --%>
-                                <div class="status-message registered">
-                                    <i class="bi bi-check-circle-fill"></i>
-                                    Bạn đã đăng ký sự kiện này
+                                <div class="status-message expired">
+                                    <i class="bi bi-flag-fill"></i>
+                                    Sự kiện đã kết thúc
                                 </div>
-                                <c:if test="${event.upcoming}">
-                                    <form method="post"
-                                          action="${pageContext.request.contextPath}/user/cancel-event"
-                                          class="confirm-form"
-                                          data-confirm="Bạn có chắc chắn muốn hủy đăng ký?">
-                                        <input type="hidden" name="eventId" value="${event.eventId}">
-                                        <button type="submit" class="btn-cancel">
-                                            <i class="bi bi-x-circle"></i> Hủy đăng ký
-                                        </button>
-                                    </form>
-                                </c:if>
                             </c:otherwise>
                         </c:choose>
                     </c:when>
 
-                    <%-- CASE 3: Hết chỗ --%>
-                    <c:when test="${event.full}">
-                        <div class="status-message full">
-                            <i class="bi bi-exclamation-circle-fill"></i>
-                            Sự kiện đã đủ người
+                    <c:when test="${userRegistration != null
+                                    && userRegistration.status == 'REGISTERED'}">
+                        <div class="status-message registered">
+                            <i class="bi bi-check-circle-fill"></i>
+                            Bạn đã đăng ký sự kiện này
                         </div>
+                        <c:if test="${event.upcoming}">
+                            <form method="post"
+                                  action="${pageContext.request.contextPath}/user/cancel-event"
+                                  class="confirm-form"
+                                  data-confirm="Bạn có chắc chắn muốn hủy đăng ký?">
+                                <input type="hidden" name="eventId" value="${event.eventId}">
+                                <button type="submit" class="btn-cancel">
+                                    <i class="bi bi-x-circle"></i> Hủy đăng ký
+                                </button>
+                            </form>
+                        </c:if>
                     </c:when>
 
-                    <%-- CASE 4: Hết hạn --%>
+                    <c:when test="${sessionScope.loggedInUser == null}">
+                        <c:choose>
+                            <c:when test="${event.registrationOpen}">
+                                <a href="${pageContext.request.contextPath}/auth/login"
+                                   class="btn-register d-block text-center text-decoration-none">
+                                    <i class="bi bi-box-arrow-in-right"></i>
+                                    Đăng nhập để đăng ký
+                                </a>
+                            </c:when>
+                            <c:otherwise>
+                                <div class="status-message expired">
+                                    <i class="bi bi-clock-history"></i>
+                                    Đã hết hạn đăng ký
+                                </div>
+                            </c:otherwise>
+                        </c:choose>
+                    </c:when>
+
                     <c:when test="${!event.registrationOpen}">
                         <div class="status-message expired">
                             <i class="bi bi-clock-history"></i>
@@ -314,7 +327,13 @@
                         </div>
                     </c:when>
 
-                    <%-- CASE 2 & 7: User có thể đăng ký (mới hoặc đăng ký lại) --%>
+                    <c:when test="${event.full}">
+                        <div class="status-message full">
+                            <i class="bi bi-exclamation-circle-fill"></i>
+                            Sự kiện đã đủ người
+                        </div>
+                    </c:when>
+
                     <c:otherwise>
                         <form method="post"
                               action="${pageContext.request.contextPath}/user/register-event">
@@ -354,7 +373,7 @@
                     <div class="col-md-4">
                         <div class="event-card">
                             <div class="event-card-image">
-                                <img src="${sim.displayImagePath}" alt="${sim.title}"
+                                <img src="${pageContext.request.contextPath}${sim.displayImagePath}" alt="${sim.title}"
                                      onerror="this.src='${pageContext.request.contextPath}/uploads/defaults/default_other.jpg'">
                                 <span class="event-card-badge">${sim.categoryName}</span>
                             </div>

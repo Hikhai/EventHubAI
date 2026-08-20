@@ -241,7 +241,7 @@
                         <c:if test="${isEditing && not empty event.imagePath}">
                             <div class="mb-3">
                                 <label class="form-label">Ảnh hiện tại:</label>
-                                <img src="${event.displayImagePath}"
+                                <img src="${pageContext.request.contextPath}${event.displayImagePath}"
                                      class="img-fluid rounded"
                                      style="max-height: 180px;"
                                      onerror="this.src='${pageContext.request.contextPath}/uploads/defaults/default_other.jpg'">
@@ -273,10 +273,29 @@
                                accept="image/jpeg,image/png,image/webp"
                                class="d-none">
 
-                        <div class="form-hint mt-2">
-                            <i class="bi bi-magic text-primary"></i>
-                            <strong>Bỏ trống</strong> để AI (Imagen 4) tự tạo ảnh cho bạn.
-                        </div>
+                        <c:choose>
+                            <c:when test="${isEditing}">
+                                <label class="ai-image-option mt-3" for="regenerateAi">
+                                    <input type="checkbox" name="regenerateAi" id="regenerateAi" value="1">
+                                    <span class="ai-image-option-body">
+                                        <span class="ai-image-option-title">
+                                            <i class="bi bi-magic"></i>
+                                            Tạo ảnh mới bằng AI (thay ảnh hiện tại)
+                                        </span>
+                                        <span class="ai-image-option-desc">
+                                            Bỏ trống file upload và tick ô này để AI tạo poster mới.
+                                            Nếu AI lỗi, ảnh cũ được giữ lại.
+                                        </span>
+                                    </span>
+                                </label>
+                            </c:when>
+                            <c:otherwise>
+                                <div class="form-hint mt-2">
+                                    <i class="bi bi-magic text-primary"></i>
+                                    <strong>Bỏ trống</strong> để AI tự tạo ảnh poster cho sự kiện.
+                                </div>
+                            </c:otherwise>
+                        </c:choose>
                     </div>
                 </div>
             </div>
@@ -313,6 +332,7 @@
         // ===== IMAGE PREVIEW =====
         const imageInput = document.getElementById('imageFile');
         const imageBox   = document.getElementById('imagePreviewBox');
+        const regenerateAi = document.getElementById('regenerateAi');
 
         imageInput.addEventListener('change', function(e) {
             const file = e.target.files[0];
@@ -324,6 +344,8 @@
                 imageInput.value = '';
                 return;
             }
+
+            if (regenerateAi) regenerateAi.checked = false;
 
             // Show preview
             const reader = new FileReader();
@@ -337,6 +359,17 @@
             };
             reader.readAsDataURL(file);
         });
+
+        if (regenerateAi) {
+            regenerateAi.addEventListener('change', function() {
+                if (!this.checked) return;
+                imageInput.value = '';
+                imageBox.innerHTML =
+                    '<i class="bi bi-cloud-upload"></i>' +
+                    '<div class="fw-semibold">Nhấn để tải ảnh lên</div>' +
+                    '<div class="image-preview-info">JPG, PNG, WEBP (tối đa 5MB)</div>';
+            });
+        }
 
         // ===== AI SUMMARY BUTTON =====
         const btnGenSummary = document.getElementById('btnGenSummary');

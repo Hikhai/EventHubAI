@@ -29,77 +29,167 @@ public class Registration {
     private String eventImagePath;
     private double eventAvgRating;
 
-    public Registration() {}
+    private static final DateTimeFormatter DISPLAY_FORMAT =
+            DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm");
 
-    /** Sự kiện đã kết thúc chưa (để hiển thị form đánh giá) */
-    public boolean isEventEnded() {
-        return eventEndTime != null && eventEndTime.isBefore(LocalDateTime.now());
+    public Registration() {
     }
 
-    /** Sự kiện chưa bắt đầu (để hiển thị nút hủy) */
+    /**
+     * Sự kiện đã kết thúc chưa (để hiển thị form đánh giá)
+     */
+    public boolean isEventEnded() {
+        return eventEndTime != null && !eventEndTime.isAfter(LocalDateTime.now());
+    }
+
+    /**
+     * Sự kiện chưa bắt đầu (để hiển thị nút hủy)
+     */
     public boolean isEventUpcoming() {
         return eventStartTime != null && eventStartTime.isAfter(LocalDateTime.now());
     }
 
     public String getFormattedEventStartTime() {
         if (eventStartTime == null) return "";
-        return eventStartTime.format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm"));
+        return eventStartTime.format(DISPLAY_FORMAT);
     }
-    /**
-     * Format thời gian đăng ký để hiển thị.
-     */
+
     public String getFormattedRegisteredAt() {
         if (registeredAt == null) return "";
-        return registeredAt.format(
-                java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm")
-        );
+        return registeredAt.format(DISPLAY_FORMAT);
     }
 
     // ===== GETTERS & SETTERS =====
-    public int getRegistrationId() { return registrationId; }
-    public void setRegistrationId(int registrationId) { this.registrationId = registrationId; }
+    public int getRegistrationId() {
+        return registrationId;
+    }
 
-    public int getUserId() { return userId; }
-    public void setUserId(int userId) { this.userId = userId; }
+    public void setRegistrationId(int registrationId) {
+        this.registrationId = registrationId;
+    }
 
-    public int getEventId() { return eventId; }
-    public void setEventId(int eventId) { this.eventId = eventId; }
+    public int getUserId() {
+        return userId;
+    }
 
-    public String getStatus() { return status; }
-    public void setStatus(String status) { this.status = status; }
+    public void setUserId(int userId) {
+        this.userId = userId;
+    }
 
-    public LocalDateTime getRegisteredAt() { return registeredAt; }
-    public void setRegisteredAt(LocalDateTime registeredAt) { this.registeredAt = registeredAt; }
+    public int getEventId() {
+        return eventId;
+    }
 
-    public LocalDateTime getCancelledAt() { return cancelledAt; }
-    public void setCancelledAt(LocalDateTime cancelledAt) { this.cancelledAt = cancelledAt; }
+    public void setEventId(int eventId) {
+        this.eventId = eventId;
+    }
 
-    public String getUserFullName() { return userFullName; }
-    public void setUserFullName(String userFullName) { this.userFullName = userFullName; }
+    public String getStatus() {
+        return status;
+    }
 
-    public String getUserEmail() { return userEmail; }
-    public void setUserEmail(String userEmail) { this.userEmail = userEmail; }
+    public void setStatus(String status) {
+        this.status = status;
+    }
 
-    public String getEventTitle() { return eventTitle; }
-    public void setEventTitle(String eventTitle) { this.eventTitle = eventTitle; }
+    public LocalDateTime getRegisteredAt() {
+        return registeredAt;
+    }
 
-    public LocalDateTime getEventStartTime() { return eventStartTime; }
+    public void setRegisteredAt(LocalDateTime registeredAt) {
+        this.registeredAt = registeredAt;
+    }
+
+    public LocalDateTime getCancelledAt() {
+        return cancelledAt;
+    }
+
+    public void setCancelledAt(LocalDateTime cancelledAt) {
+        this.cancelledAt = cancelledAt;
+    }
+
+    public String getUserFullName() {
+        return userFullName;
+    }
+
+    public void setUserFullName(String userFullName) {
+        this.userFullName = userFullName;
+    }
+
+    public String getUserEmail() {
+        return userEmail;
+    }
+
+    public void setUserEmail(String userEmail) {
+        this.userEmail = userEmail;
+    }
+
+    public String getEventTitle() {
+        return eventTitle;
+    }
+
+    public void setEventTitle(String eventTitle) {
+        this.eventTitle = eventTitle;
+    }
+
+    public LocalDateTime getEventStartTime() {
+        return eventStartTime;
+    }
+
     public void setEventStartTime(LocalDateTime eventStartTime) {
         this.eventStartTime = eventStartTime;
     }
 
-    public LocalDateTime getEventEndTime() { return eventEndTime; }
-    public void setEventEndTime(LocalDateTime eventEndTime) { this.eventEndTime = eventEndTime; }
+    public LocalDateTime getEventEndTime() {
+        return eventEndTime;
+    }
 
-    public String getEventLocation() { return eventLocation; }
-    public void setEventLocation(String eventLocation) { this.eventLocation = eventLocation; }
+    public void setEventEndTime(LocalDateTime eventEndTime) {
+        this.eventEndTime = eventEndTime;
+    }
 
-    public String getEventStatus() { return eventStatus; }
-    public void setEventStatus(String eventStatus) { this.eventStatus = eventStatus; }
+    public String getEventLocation() {
+        return eventLocation;
+    }
 
-    public String getEventImagePath() { return eventImagePath; }
-    public void setEventImagePath(String eventImagePath) { this.eventImagePath = eventImagePath; }
+    public void setEventLocation(String eventLocation) {
+        this.eventLocation = eventLocation;
+    }
 
-    public double getEventAvgRating() { return eventAvgRating; }
-    public void setEventAvgRating(double eventAvgRating) { this.eventAvgRating = eventAvgRating; }
+    public String getEventStatus() {
+        return eventStatus;
+    }
+
+    public void setEventStatus(String eventStatus) {
+        this.eventStatus = eventStatus;
+    }
+
+    public String getEventImagePath() {
+        return eventImagePath;
+    }
+
+    public void setEventImagePath(String eventImagePath) {
+        this.eventImagePath = eventImagePath;
+    }
+
+    /**
+     * Đường dẫn ảnh sự kiện (defaults vs events) để JSP hiển thị.
+     */
+    public String getDisplayImagePath() {
+        if (eventImagePath != null && !eventImagePath.isEmpty()) {
+            if (eventImagePath.startsWith("default_")) {
+                return "/uploads/defaults/" + eventImagePath;
+            }
+            return "/uploads/events/" + eventImagePath;
+        }
+        return "/uploads/defaults/default_other.jpg";
+    }
+
+    public double getEventAvgRating() {
+        return eventAvgRating;
+    }
+
+    public void setEventAvgRating(double eventAvgRating) {
+        this.eventAvgRating = eventAvgRating;
+    }
 }

@@ -95,7 +95,7 @@
                                 <tr>
                                         <%-- Ảnh --%>
                                     <td>
-                                        <img src="${event.displayImagePath}"
+                                        <img src="${pageContext.request.contextPath}${event.displayImagePath}"
                                              class="event-thumb-small"
                                              onerror="this.src='${pageContext.request.contextPath}/uploads/defaults/default_other.jpg'"
                                              alt="">

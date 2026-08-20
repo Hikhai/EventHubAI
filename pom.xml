@@ -72,6 +72,22 @@
     </dependency>
 
     <!-- =========================================================
+         HIKARICP — connection pool (tránh mở TCP mới mỗi query)
+         ========================================================= -->
+    <dependency>
+      <groupId>com.zaxxer</groupId>
+      <artifactId>HikariCP</artifactId>
+      <version>6.2.1</version>
+    </dependency>
+
+    <!-- Binding log cho HikariCP (tránh cảnh báo SLF4J trên Tomcat) -->
+    <dependency>
+      <groupId>org.slf4j</groupId>
+      <artifactId>slf4j-simple</artifactId>
+      <version>2.0.16</version>
+    </dependency>
+
+    <!-- =========================================================
          BCRYPT
          ========================================================= -->
     <dependency>
