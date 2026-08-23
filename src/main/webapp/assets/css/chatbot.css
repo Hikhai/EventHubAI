@@ -113,7 +113,14 @@
     transition: background 0.2s;
 }
 
+.chatbot-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
 .chatbot-header .btn-close-chat:hover { background: rgba(255, 255, 255, 0.28); }
+.chatbot-header .btn-close-chat:disabled { opacity: 0.55; cursor: not-allowed; }
 
 .chatbot-messages {
     flex-grow: 1;

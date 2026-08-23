@@ -1,18 +1,72 @@
 document.addEventListener('DOMContentLoaded', function () {
     const toggleBtn = document.getElementById('chatbotToggle');
     const closeBtn = document.getElementById('chatbotClose');
+    const clearBtn = document.getElementById('chatbotClear');
     const chatWindow = document.getElementById('chatbotWindow');
     const messagesArea = document.getElementById('chatbotMessages');
     const input = document.getElementById('chatbotInput');
     const sendBtn = document.getElementById('chatbotSend');
     const quickReplies = document.querySelectorAll('.quick-reply-btn');
 
-    if (!toggleBtn || !chatWindow) return;
+    if (!toggleBtn || !chatWindow || !messagesArea) return;
 
     const contextPath = document.querySelector('meta[name="context-path"]')
         ?.getAttribute('content') || '';
+    const apiUrl = contextPath + '/api/chatbot';
+    const userId = chatWindow.getAttribute('data-user-id') || 'current';
+    const storageKey = 'eventhub-chat-session-' + userId;
+    const initialWelcome = messagesArea.innerHTML;
 
     let sending = false;
+    let historyReady = false;
+    const conversationId = getConversationId();
+
+    // Mỗi tab/trang dùng chung conversation id trong localStorage. Vì API
+    // lọc tiếp theo user ở server nên việc đổi tài khoản không làm lộ lịch sử.
+    function getConversationId() {
+        let value = null;
+        try {
+            value = localStorage.getItem(storageKey);
+            if (!/^[A-Za-z0-9_-]{1,100}$/.test(value || '')) {
+                value = 'chat-' + createRandomId();
+                localStorage.setItem(storageKey, value);
+            }
+            return value;
+        } catch (e) {
+            // Nếu trình duyệt chặn localStorage, dùng cookie lâu dài để các
+            // trang/tab vẫn nhận cùng conversation id.
+            value = readConversationCookie(storageKey);
+            if (!/^[A-Za-z0-9_-]{1,100}$/.test(value || '')) {
+                value = 'chat-' + createRandomId();
+                writeConversationCookie(storageKey, value);
+            }
+            return value;
+        }
+    }
+
+    function readConversationCookie(name) {
+        const prefix = name + '=';
+        const cookies = document.cookie ? document.cookie.split(';') : [];
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.indexOf(prefix) === 0) {
+                return decodeURIComponent(cookie.slice(prefix.length));
+            }
+        }
+        return null;
+    }
+
+    function writeConversationCookie(name, value) {
+        document.cookie = name + '=' + encodeURIComponent(value)
+            + '; Max-Age=31536000; Path=/; SameSite=Lax';
+    }
+
+    function createRandomId() {
+        if (window.crypto && typeof window.crypto.randomUUID === 'function') {
+            return window.crypto.randomUUID();
+        }
+        return Date.now().toString(36) + '-' + Math.random().toString(36).slice(2);
+    }
 
     function openChat() {
         chatWindow.classList.remove('hidden');
@@ -32,6 +86,10 @@ document.addEventListener('DOMContentLoaded', function () {
         closeBtn.addEventListener('click', closeChat);
     }
 
+    if (clearBtn) {
+        clearBtn.addEventListener('click', clearHistory);
+    }
+
     document.addEventListener('keydown', function (e) {
         if (e.key === 'Escape' && !chatWindow.classList.contains('hidden')) {
             closeChat();
@@ -39,7 +97,7 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 
     function sendMessage() {
-        if (!input) return;
+        if (!input || !historyReady) return;
         const message = input.value.trim();
         if (!message || sending) return;
 
@@ -50,21 +108,27 @@ document.addEventListener('DOMContentLoaded', function () {
 
         const typingId = showTyping();
 
-        fetch(contextPath + '/api/chatbot', {
+        fetch(apiUrl, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8'
             },
             body: 'message=' + encodeURIComponent(message)
+                + '&conversationId=' + encodeURIComponent(conversationId)
         })
             .then(function (res) {
                 if (res.status === 401) {
                     return {
                         success: false,
-                        message: 'Vui lòng <a href="' + contextPath + '/auth/login">đăng nhập</a> để trò chuyện cùng trợ lý AI.'
+                        message: 'Vui lòng [đăng nhập](' + contextPath + '/auth/login) để trò chuyện cùng trợ lý AI.'
                     };
                 }
-                return res.json();
+                return res.json().then(function (data) {
+                    if (!res.ok) {
+                        data.success = false;
+                    }
+                    return data;
+                });
             })
             .then(function (data) {
                 removeTyping(typingId);
@@ -84,6 +148,68 @@ document.addEventListener('DOMContentLoaded', function () {
                 if (input) input.focus();
             });
     }
+
+    function loadHistory() {
+        fetch(apiUrl + '?conversationId=' + encodeURIComponent(conversationId), {
+            method: 'GET',
+            headers: { 'Accept': 'application/json' }
+        })
+            .then(function (res) {
+                if (!res.ok) throw new Error('Không tải được lịch sử');
+                return res.json();
+            })
+            .then(function (data) {
+                if (!data.success || !Array.isArray(data.messages)) {
+                    throw new Error('Dữ liệu lịch sử không hợp lệ');
+                }
+
+                messagesArea.innerHTML = '';
+                if (data.messages.length === 0) {
+                    messagesArea.innerHTML = initialWelcome;
+                    return;
+                }
+
+                data.messages.forEach(function (message) {
+                    const role = message.role === 'assistant' ? 'assistant' : 'user';
+                    appendMessage(role, message.content || '', message.timestamp);
+                });
+            })
+            .catch(function () {
+                // Giữ lời chào mặc định để lỗi đọc lịch sử không chặn chatbot.
+                messagesArea.innerHTML = initialWelcome;
+            })
+            .finally(function () {
+                historyReady = true;
+                if (sendBtn && !sending) sendBtn.disabled = false;
+            });
+    }
+
+    function clearHistory() {
+        if (sending || !window.confirm('Xóa toàn bộ lịch sử trò chuyện này?')) return;
+
+        if (clearBtn) clearBtn.disabled = true;
+        fetch(apiUrl + '?conversationId=' + encodeURIComponent(conversationId), {
+            method: 'DELETE',
+            headers: { 'Accept': 'application/json' }
+        })
+            .then(function (res) {
+                if (!res.ok) throw new Error('Không xóa được lịch sử');
+                return res.json();
+            })
+            .then(function () {
+                messagesArea.innerHTML = initialWelcome;
+            })
+            .catch(function () {
+                appendMessage('assistant', 'Không thể xóa lịch sử lúc này. Bạn vui lòng thử lại sau.');
+            })
+            .finally(function () {
+                if (clearBtn) clearBtn.disabled = false;
+            });
+    }
+
+    // Tải lịch sử ngay khi widget xuất hiện trên bất kỳ trang nào.
+    if (sendBtn) sendBtn.disabled = true;
+    loadHistory();
 
     if (input) {
         input.addEventListener('keypress', function (e) {
