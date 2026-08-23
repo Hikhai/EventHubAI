@@ -1,5 +1,6 @@
 package com.eventhub.config;
 
+import com.eventhub.service.ChatbotService;
 import jakarta.servlet.ServletContextEvent;
 import jakarta.servlet.ServletContextListener;
 import jakarta.servlet.annotation.WebListener;
@@ -26,6 +27,7 @@ public class AppContextListener implements ServletContextListener {
 
     @Override
     public void contextDestroyed(ServletContextEvent sce) {
+        ChatbotService.shutdownExecutor();
         DBConnection.shutdown();
     }
 }

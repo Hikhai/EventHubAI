@@ -52,7 +52,10 @@ Trang gốc `index.jsp`: Admin → dashboard; còn lại → danh sách sự ki�
 flowchart TD
   R[Request] --> F0[CharacterEncodingFilter UTF-8]
   F0 --> P{URL?}
-  P -->|/auth/* /events /api/chatbot| Pub[Công khai]
+  P -->|/auth/* /events| Pub[Công khai]
+  P -->|/api/chatbot| ChatAuth[Chatbot kiểm tra đăng nhập]
+  ChatAuth -->|Chưa login| L[/auth/login]
+  ChatAuth -->|Đã login| ChatOK[Chatbot API]
   P -->|/user/*| AF[AuthFilter]
   P -->|/admin/*| AF
   AF -->|Chưa login| L[/auth/login]
@@ -334,26 +337,35 @@ JS gọi từ `event-form.jsp`.
 ## 6. Chatbot
 
 ```
-POST /api/chatbot     (không bắt buộc login)
+GET    /api/chatbot?conversationId=...  (đọc lịch sử, yêu cầu login)
+POST   /api/chatbot                    (gửi tin nhắn, yêu cầu login)
+DELETE /api/chatbot?conversationId=... (xóa cuộc trò chuyện, yêu cầu login)
 ```
 
 ```mermaid
 flowchart LR
   JS[chatbot.js] --> API[ChatbotServlet]
   API --> CS[ChatbotService]
-  CS --> DB[(Sự kiện + đăng ký của user)]
-  CS --> GM[GeminiService.chat]
-  CS --> SS[Lưu history trong session]
+  CS --> CL[ChatLogDAO]
+  CL --> DB[(chat_logs: user + conversation)]
+  CS --> W[Chat worker nền]
+  W --> DB2[(Sự kiện + đăng ký của user)]
+  W --> GM[GeminiService.chat]
+  JS -->|poll status| API
+  CS --> SS[Lưu cache trong session]
 ```
 
 | File | Vai trò |
 |---|---|
-| `views/common/chatbot.jsp` + `assets/js/chatbot.js` + `assets/css/chatbot.css` | Widget |
-| `servlet/api/ChatbotServlet.java` | JSON in/out |
-| `service/ChatbotService.java` | Prompt + lịch sử session + context sự kiện |
-| `GeminiService.chat` | Gọi model text |
+| `views/common/chatbot.jsp` + `assets/js/chatbot.js` + `assets/css/chatbot.css` | Widget, lưu conversation id trong localStorage và hydrate lịch sử |
+| `servlet/api/ChatbotServlet.java` | JSON in/out cho đọc/gửi/xóa lịch sử |
+| `dao/ChatLogDAO.java` + `model/ChatMessage.java` | Đọc/ghi lịch sử từ bảng `chat_logs` |
+| `service/ChatbotService.java` | Prompt + lịch sử DB/session + context sự kiện |
+| `GeminiService.chat` | Gọi model text với timeout riêng cho chatbot |
 
-Guest vẫn chat được. User đã login thì prompt kèm sự kiện mình đã đăng ký để câu trả lời sát hơn.
+POST chỉ ghi câu hỏi và trả job ngay; worker nền tạo reply, lưu vào `chat_logs`, còn `chatbot.js` polling trạng thái để hiển thị kết quả. Vì vậy chuyển trang/tab không làm hủy request Gemini.
+
+Chatbot yêu cầu đăng nhập. Lịch sử được lọc theo user ở server, nên chuyển trang hoặc mở tab mới vẫn thấy lại cuộc trò chuyện. User đã login thì prompt kèm sự kiện mình đã đăng ký để câu trả lời sát hơn.
 
 ---
 
@@ -377,7 +389,7 @@ Guest vẫn chat được. User đã login thì prompt kèm sự kiện mình đ
 | `/admin/categories` | ADMIN | `AdminCategoryServlet` |
 | `/admin/events/registrations` | ADMIN | `AdminRegistrationsServlet` |
 | `/api/ai/summary` | ADMIN | `AISummaryServlet` |
-| `/api/chatbot` | Công khai | `ChatbotServlet` |
+| `/api/chatbot` (GET/POST/DELETE) | Đã login | `ChatbotServlet` |
 | `/uploads/*` | Công khai | `UploadServlet` |
 
 ---

@@ -60,6 +60,7 @@ CREATE TABLE `chat_logs` (
   PRIMARY KEY (`log_id`),
   KEY `user_id` (`user_id`),
   KEY `idx_chat_session` (`session_id`),
+  KEY `idx_chat_user_session_time` (`user_id`,`session_id`,`created_at`,`log_id`),
   CONSTRAINT `chat_logs_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `users` (`user_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;

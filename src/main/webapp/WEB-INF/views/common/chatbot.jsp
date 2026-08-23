@@ -4,15 +4,22 @@
     <i class="bi bi-chat-dots-fill"></i>
 </button>
 
-<div id="chatbotWindow" class="chatbot-window hidden">
+<div id="chatbotWindow" class="chatbot-window hidden"
+     data-user-id="${sessionScope.loggedInUser.userId}">
     <div class="chatbot-header">
         <div>
             <h5><i class="bi bi-robot"></i> EventHub AI</h5>
             <div class="chatbot-status">Trực tuyến · sẵn sàng hỗ trợ</div>
         </div>
-        <button id="chatbotClose" class="btn-close-chat" type="button" aria-label="Đóng">
-            <i class="bi bi-x-lg"></i>
-        </button>
+        <div class="chatbot-header-actions">
+            <button id="chatbotClear" class="btn-close-chat" type="button"
+                    aria-label="Xóa lịch sử" title="Xóa lịch sử">
+                <i class="bi bi-trash3"></i>
+            </button>
+            <button id="chatbotClose" class="btn-close-chat" type="button" aria-label="Đóng">
+                <i class="bi bi-x-lg"></i>
+            </button>
+        </div>
     </div>
 
     <div id="chatbotMessages" class="chatbot-messages">

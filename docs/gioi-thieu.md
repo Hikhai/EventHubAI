@@ -14,9 +14,9 @@
 
 | Vai trò | Việc chính |
 |---|---|
-| **Khách** | Xem danh sách / chi tiết sự kiện, hỏi chatbot |
-| **Sinh viên (USER)** | Đăng ký tài khoản, đăng ký / hủy sự kiện, xem “Sự kiện của tôi”, đánh giá 1–5 sao |
-| **Quản trị (ADMIN)** | Dashboard, CRUD sự kiện & danh mục, xem danh sách đăng ký, dùng AI tóm tắt / tạo ảnh |
+| **Khách** | Xem danh sách / chi tiết sự kiện |
+| **Sinh viên (USER)** | Đăng ký tài khoản, đăng ký / hủy sự kiện, xem “Sự kiện của tôi”, đánh giá 1–5 sao, dùng chatbot |
+| **Quản trị (ADMIN)** | Dashboard, CRUD sự kiện & danh mục, xem danh sách đăng ký, dùng AI tóm tắt / tạo ảnh và chatbot |
 
 Tài khoản demo (sau khi import database mẫu):
 
@@ -91,7 +91,7 @@ JSP (giao diện)
 | `events` | Thông tin sự kiện, ảnh, trạng thái, số chỗ, điểm TB |
 | `registrations` | Đăng ký (`REGISTERED` / `CANCELLED`), mỗi user–event một dòng |
 | `reviews` | Điểm 1–5 + nhận xét, mỗi user–event một lần |
-| `chat_logs` | Bảng sẵn cho lịch sử chat (chatbot hiện lưu chủ yếu trong session) |
+| `chat_logs` | Lịch sử chat lâu dài theo user + cuộc trò chuyện; session chỉ là cache/fallback |
 
 Trạng thái sự kiện: `DRAFT` → `PUBLISHED` → `COMPLETED` hoặc `CANCELLED`.
 

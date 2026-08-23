@@ -32,25 +32,64 @@ public class GeminiService {
     private static final String BASE_URL =
             "https://generativelanguage.googleapis.com/v1beta/models/";
 
-    // Danh sách model Text chính thức mới nhất của Google Gemini
-    private static final String[] TEXT_MODELS = {
-            "gemini-3.6-flash",
-            "gemini-3.5-flash",
-            "gemini-3.0-flash",
-            "gemini-2.5-flash"
-    };
+    // Có thể ghi đè danh sách model bằng GEMINI_TEXT_MODELS (phân tách bằng dấu phẩy)
+    // để đổi model mà không phải build lại ứng dụng.
+    private static final String[] TEXT_MODELS = loadTextModels();
 
-    private static final int TIMEOUT_SECONDS = 30;
+    // Timeout kết nối ngắn, nhưng cho phép model đủ thời gian sinh câu trả lời dài.
+    // GEMINI_CHAT_TIMEOUT_SECONDS có thể đặt trong khoảng 15-180 giây.
+    private static final int CONNECT_TIMEOUT_SECONDS = 10;
+    private static final int SUMMARY_TIMEOUT_SECONDS = 45;
+    private static final int CHAT_TIMEOUT_SECONDS = readIntEnv(
+            "GEMINI_CHAT_TIMEOUT_SECONDS", 90, 15, 180);
     private static final int IMAGE_TIMEOUT_SECONDS = 60;
+    private static final int CHAT_MAX_OUTPUT_TOKENS = 4096;
 
     // HttpClient dùng chung (thread-safe)
     private static final HttpClient HTTP_CLIENT = HttpClient.newBuilder()
-            .connectTimeout(Duration.ofSeconds(TIMEOUT_SECONDS))
+            .connectTimeout(Duration.ofSeconds(CONNECT_TIMEOUT_SECONDS))
             .followRedirects(HttpClient.Redirect.NORMAL)
             .build();
 
     // Gson để parse/build JSON
     private static final Gson GSON = new GsonBuilder().create();
+
+    private static String[] loadTextModels() {
+        String configured = System.getenv("GEMINI_TEXT_MODELS");
+        if (configured != null && !configured.isBlank()) {
+            String[] models = Arrays.stream(configured.split(","))
+                    .map(String::trim)
+                    .filter(model -> !model.isBlank())
+                    .toArray(String[]::new);
+            if (models.length > 0) {
+                return models;
+            }
+        }
+
+        // Ưu tiên model flash nhanh, giữ các model ổn định làm fallback.
+        return new String[]{
+                "gemini-3.6-flash",
+                "gemini-3.5-flash",
+                "gemini-3.0-flash",
+                "gemini-2.5-flash"
+        };
+    }
+
+    private static int readIntEnv(String name, int defaultValue,
+                                  int min, int max) {
+        String value = System.getenv(name);
+        if (value == null || value.isBlank()) {
+            return defaultValue;
+        }
+        try {
+            int parsed = Integer.parseInt(value.trim());
+            return Math.max(min, Math.min(max, parsed));
+        } catch (NumberFormatException e) {
+            System.err.println("[GeminiService] Giá trị " + name
+                    + " không hợp lệ, dùng mặc định " + defaultValue + "s.");
+            return defaultValue;
+        }
+    }
 
     // =====================================================
     // PHƯƠNG THỨC 1: TÓM TẮT MÔ TẢ SỰ KIỆN
@@ -88,7 +127,7 @@ public class GeminiService {
             );
 
             String requestBody = buildTextRequestBody(prompt, 500, 0.4);
-            String responseJson = generateContent(TEXT_MODELS, requestBody, TIMEOUT_SECONDS);
+            String responseJson = generateContent(TEXT_MODELS, requestBody, SUMMARY_TIMEOUT_SECONDS);
             if (responseJson == null) return null;
 
             return extractTextFromResponse(responseJson);
@@ -208,9 +247,9 @@ public class GeminiService {
 
         try {
             String requestBody = buildChatRequestBody(systemPrompt, history);
-            String responseJson = generateContent(TEXT_MODELS, requestBody, TIMEOUT_SECONDS);
+            String responseJson = generateContent(TEXT_MODELS, requestBody, CHAT_TIMEOUT_SECONDS);
             if (responseJson == null) {
-                return "Hệ thống AI hiện đang bận hoặc quá tải. Bạn vui lòng thử lại sau vài giây nhé!";
+                return "Hệ thống AI phản hồi quá lâu hoặc đang quá tải. Bạn vui lòng thử lại sau vài giây nhé!";
             }
 
             String reply = extractTextFromResponse(responseJson);
@@ -313,9 +352,9 @@ public class GeminiService {
         }
         root.add("contents", contents);
 
-        // generationConfig (maxOutputTokens: 2048 để tránh cắt ngắn câu trả lời)
+        // generationConfig: tăng giới hạn để câu trả lời dài không bị cắt giữa chừng
         JsonObject genConfig = new JsonObject();
-        genConfig.addProperty("maxOutputTokens", 2048);
+        genConfig.addProperty("maxOutputTokens", CHAT_MAX_OUTPUT_TOKENS);
         genConfig.addProperty("temperature", 0.35);
         genConfig.addProperty("topP", 0.9);
         root.add("generationConfig", genConfig);
@@ -328,8 +367,11 @@ public class GeminiService {
     // =====================================================
 
     private String generateContent(String[] models, String requestBody, int timeoutSeconds) {
+        boolean timeoutAlreadySeen = false;
+
         for (String model : models) {
-            GeminiResponse result = callGeminiAPI(model + ":generateContent", requestBody, timeoutSeconds);
+            GeminiResponse result = callGeminiAPI(
+                    model + ":generateContent", requestBody, timeoutSeconds);
             if (result.ok()) {
                 if (!model.equals(models[0])) {
                     System.out.println("[GeminiService] Sử dụng model phụ: " + model);
@@ -337,14 +379,27 @@ public class GeminiService {
                 return result.body();
             }
             if (result.quotaExceeded()) {
-                System.err.println("[GeminiService] Model " + model + " hết quota (429) — đang thử model tiếp theo...");
+                System.err.println("[GeminiService] Model " + model
+                        + " hết quota (429) — đang thử model tiếp theo...");
                 continue;
+            }
+            if (result.timedOut()) {
+                // Một lần fallback là đủ. Nếu tiếp tục thử toàn bộ model sau
+                // timeout, một request có thể bị treo nhiều phút.
+                if (timeoutAlreadySeen) {
+                    break;
+                }
+                timeoutAlreadySeen = true;
+                System.err.println("[GeminiService] Model " + model
+                        + " timeout — thử thêm một model dự phòng...");
             }
         }
         return null;
     }
 
-    private GeminiResponse callGeminiAPI(String modelAndAction, String requestBody, int timeoutSeconds) {
+    private GeminiResponse callGeminiAPI(String modelAndAction,
+                                         String requestBody,
+                                         int timeoutSeconds) {
         for (int attempt = 1; attempt <= 2; attempt++) {
             try {
                 String url = BASE_URL + modelAndAction + "?key=" + API_KEY;
@@ -366,7 +421,7 @@ public class GeminiService {
                 }
 
                 String body = response.body() != null ? response.body() : "";
-                System.err.println("[GeminiService] API tra ve HTTP "
+                System.err.println("[GeminiService] API trả về HTTP "
                         + status
                         + " (" + modelAndAction + ") | "
                         + body.substring(0, Math.min(200, body.length())));
@@ -374,18 +429,38 @@ public class GeminiService {
                 if (status == 429) {
                     return GeminiResponse.quota();
                 }
-                boolean retryable = status == 502 || status == 503;
+                boolean retryable = status == 408 || status == 500
+                        || status == 502 || status == 503 || status == 504;
                 if (!retryable) {
                     return GeminiResponse.fail();
                 }
                 if (attempt < 2) {
                     Thread.sleep(600L);
                 }
+            } catch (HttpTimeoutException timeout) {
+                // Không retry ngay cùng một request: timeout đã chờ đủ lâu
+                // và retry mù sẽ làm người dùng phải chờ thêm nhiều phút.
+                System.err.println("[GeminiService] Lỗi gọi API ("
+                        + modelAndAction + ", timeout=" + timeoutSeconds
+                        + "s): request timed out.");
+                return GeminiResponse.timeout();
             } catch (InterruptedException ie) {
                 Thread.currentThread().interrupt();
                 return GeminiResponse.fail();
+            } catch (IOException ioe) {
+                System.err.println("[GeminiService] Lỗi mạng gọi API ("
+                        + modelAndAction + "): " + ioe.getMessage());
+                if (attempt < 2) {
+                    try {
+                        Thread.sleep(600L);
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        return GeminiResponse.fail();
+                    }
+                }
             } catch (Exception e) {
-                System.err.println("[GeminiService] Lỗi gọi API: " + e.getMessage());
+                System.err.println("[GeminiService] Lỗi gọi API ("
+                        + modelAndAction + "): " + e.getMessage());
                 if (attempt < 2) {
                     try {
                         Thread.sleep(600L);
@@ -522,21 +597,27 @@ public class GeminiService {
         return null;
     }
 
-    private record GeminiResponse(String body, boolean quotaExceeded) {
+    private record GeminiResponse(String body,
+                                  boolean quotaExceeded,
+                                  boolean timedOut) {
         static GeminiResponse ok(String body) {
-            return new GeminiResponse(body, false);
+            return new GeminiResponse(body, false, false);
         }
 
         static GeminiResponse quota() {
-            return new GeminiResponse(null, true);
+            return new GeminiResponse(null, true, false);
+        }
+
+        static GeminiResponse timeout() {
+            return new GeminiResponse(null, false, true);
         }
 
         static GeminiResponse fail() {
-            return new GeminiResponse(null, false);
+            return new GeminiResponse(null, false, false);
         }
 
         boolean ok() {
-            return body != null && !quotaExceeded;
+            return body != null && !quotaExceeded && !timedOut;
         }
     }
 
@@ -548,6 +629,10 @@ public class GeminiService {
             if (candidates == null || candidates.isEmpty()) return null;
 
             JsonObject candidate = candidates.get(0).getAsJsonObject();
+            if (candidate.has("finishReason")
+                    && "MAX_TOKENS".equals(candidate.get("finishReason").getAsString())) {
+                System.err.println("[GeminiService] Câu trả lời chạm giới hạn maxOutputTokens.");
+            }
             JsonObject content = candidate.getAsJsonObject("content");
             if (content == null) return null;
 

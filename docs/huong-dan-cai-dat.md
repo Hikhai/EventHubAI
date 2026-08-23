@@ -84,7 +84,7 @@ IntelliJ cần artifact để Tomcat deploy.
    - `+` → Artifact `EventHubAI:war exploded`
    - **Application context:** `/eventhub`
 4. Tab **Server** (hoặc **Startup/Connection** tùy bản IntelliJ) → **Environment variables**  
-   Thêm đúng 3 biến bắt buộc (và 1 biến AI nếu có):
+   Thêm 3 biến bắt buộc; các biến AI/cấu hình bên dưới là tùy chọn:
 
 | Tên biến | Ví dụ | Bắt buộc |
 |---|---|---|
@@ -92,6 +92,8 @@ IntelliJ cần artifact để Tomcat deploy.
 | `DB_USERNAME` | `root` | Có |
 | `DB_PASSWORD` | mật khẩu MySQL của máy bạn | Có |
 | `GEMINI_API_KEY` | key từ [Google AI Studio](https://aistudio.google.com/apikey) | Không |
+| `GEMINI_CHAT_TIMEOUT_SECONDS` | `90` (15–180 giây, tăng nếu câu trả lời dài) | Không |
+| `GEMINI_TEXT_MODELS` | `gemini-3.6-flash,gemini-2.5-flash` nếu muốn tự chọn model fallback | Không |
 | `UPLOAD_BASE_DIR` | đường dẫn tuyệt đối nếu muốn đổi chỗ lưu ảnh | Không |
 
 `DB_PASSWORD` vẫn phải khai báo dù mật khẩu rỗng (hiếm). App **không** đọc user/pass từ file `.properties` — chỉ đọc biến môi trường (`DBConnection.java`).
@@ -149,6 +151,7 @@ Các user khác trong dump (`binh@example.com`, …) dùng chung mật khẩu `U
 |---|---|---|
 | `Database config chưa được cấu hình` | Chưa set `DB_URL` / `DB_USERNAME` / `DB_PASSWORD` trên **Tomcat run config**, rồi restart | `config/DBConnection.java` |
 | `Communications link failure` / timeout | MySQL chưa chạy, sai port 3306, sai tên database | MySQL service |
+| `[GeminiService] ... request timed out` | Chatbot đã chờ 90 giây; tăng `GEMINI_CHAT_TIMEOUT_SECONDS` (tối đa 180) và kiểm tra API key/model/quota | `GeminiService.java` |
 | `Access denied for user` | Sai user/mật khẩu MySQL | biến `DB_*` |
 | Trang trắng / 404 `/eventhub` | Sai Application context hoặc chưa deploy artifact exploded | Tomcat Deployment |
 | `jakarta.servlet` / cannot find symbol | Đang dùng Tomcat 9 hoặc JDK quá cũ | Tomcat 10.1 + JDK 21 |
