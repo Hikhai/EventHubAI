@@ -12,15 +12,16 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.time.Duration;
 import java.util.*;
+import java.util.regex.Pattern;
 
 /**
  * Service gọi Google Gemini API và hỗ trợ AI Image Generation.
  * Dùng java.net.http.HttpClient (built-in Java 11+).
  * <p>
  * 3 chức năng chính:
- * 1. generateSummary  → tóm tắt sự kiện (gemini-2.5-flash / gemini-2.0-flash / gemini-1.5-flash)
- * 2. generateEventImage → banner 16:9 (Imagen 3 / Gemini native / AI Image Generator Fallback)
- * 3. chat             → chatbot tư vấn sự kiện (gemini-2.5-flash / gemini-2.0-flash / gemini-1.5-flash)
+ * 1. generateSummary  → tóm tắt sự kiện (gemini-3.6-flash)
+ * 2. generateEventImage → banner 16:9 chất lượng cao, đúng chủ đề
+ * 3. chat             → chatbot tư vấn sự kiện (gemini-3.6-flash)
  */
 public class GeminiService {
 
@@ -31,12 +32,12 @@ public class GeminiService {
     private static final String BASE_URL =
             "https://generativelanguage.googleapis.com/v1beta/models/";
 
-    // Danh sách model Text chính thức của Google Gemini (hỗ trợ Free Tier & tự động fallback)
+    // Danh sách model Text chính thức mới nhất của Google Gemini
     private static final String[] TEXT_MODELS = {
-            "gemini-2.5-flash",
-            "gemini-2.0-flash",
-            "gemini-1.5-flash",
-            "gemini-1.5-flash-8b"
+            "gemini-3.6-flash",
+            "gemini-3.5-flash",
+            "gemini-3.0-flash",
+            "gemini-2.5-flash"
     };
 
     private static final int TIMEOUT_SECONDS = 30;
@@ -103,37 +104,25 @@ public class GeminiService {
     // =====================================================
 
     /**
-     * Tạo ảnh banner 16:9 cho sự kiện.
+     * Tạo ảnh banner 16:9 đúng chủ đề cho sự kiện.
      * Thứ tự ưu tiên:
      * 1. Google Imagen 3 (nếu API key có quota)
      * 2. Gemini 2.0 native image generation
-     * 3. AI Image Generator Fallback (Miễn phí, không bị giới hạn 429)
+     * 3. AI Image Generator Fallback (Pollinations AI miễn phí, không bị giới hạn 429)
      *
      * @param event Sự kiện cần tạo ảnh
      * @return Tên file ảnh đã lưu (vd: "ai_abc123.jpg"), hoặc null nếu thất bại
      */
     public String generateEventImage(Event event) {
-        String title = event.getTitle() != null ? event.getTitle() : "Student Event";
-        String category = event.getCategoryName() != null ? event.getCategoryName() : "Campus Event";
-        String desc = event.getDescription() != null ? event.getDescription() : "";
-        if (desc.length() > 300) {
-            desc = desc.substring(0, 300);
-        }
-
-        String prompt = String.format(
-                "Photorealistic 16:9 event banner photograph, vibrant university campus atmosphere, cinematic lighting, sharp focus, professional setting. Category: %s. Event topic: %s. Details: %s. High quality, realistic venue and student crowd, no text, no letters, no logos, no watermark.",
-                category, title, desc
-        );
+        String prompt = buildSmartImagePrompt(event);
 
         // 1. Thử qua Google Imagen 3 / Gemini Image nếu có API Key
         if (API_KEY != null && !API_KEY.isBlank()) {
-            // Thử Google Imagen 3 predict
             String imagenFile = tryImagen3Predict(prompt);
             if (imagenFile != null) {
                 return imagenFile;
             }
 
-            // Thử Gemini 2.0 native image
             String geminiFile = tryGeminiNativeImage(prompt);
             if (geminiFile != null) {
                 return geminiFile;
@@ -141,8 +130,63 @@ public class GeminiService {
         }
 
         // 2. Tự động Fallback sang AI Image Generator miễn phí (Pollinations AI)
-        // Giúp tránh hoàn toàn lỗi 429 quota trên các tài khoản Gemini Free tier
         return tryFreeAiImage(prompt);
+    }
+
+    /**
+     * Tạo prompt tiếng Anh chuyên biệt, giàu chi tiết cho từng loại sự kiện
+     * (tránh tình trạng sinh ra ảnh sân vận động tối tăm, lạc đề).
+     */
+    private String buildSmartImagePrompt(Event event) {
+        String title = event.getTitle() != null ? event.getTitle() : "";
+        String category = event.getCategoryName() != null ? event.getCategoryName() : "";
+        String desc = event.getDescription() != null ? event.getDescription() : "";
+        String combined = (title + " " + category + " " + desc).toLowerCase();
+
+        String scene;
+
+        if (containsAny(combined, "figma", "ui/ux", "ui-ux", "ux", "ui design", "thiết kế giao diện", "thiết kế đồ họa", "design sprint")) {
+            scene = "creative university students in a bright modern UI/UX design studio workshop, collaborating on laptops showing colorful Figma interface mockups, wireframes, sticky notes on glass wall, warm natural daylight, clean aesthetic";
+        } else if (containsAny(combined, "ai", "trí tuệ nhân tạo", "gemini", "chatgpt", "machine learning", "deep learning", "data", "pandas", "python", "dữ liệu")) {
+            scene = "modern university computer lab workshop, students coding and analyzing data visualizations and AI neural network charts on bright screens, high-tech modern classroom, bright clean daytime lighting";
+        } else if (containsAny(combined, "hackathon", "git", "github", "lập trình", "coding", "flutter", "mobile app", "blockchain", "web3", "web dev")) {
+            scene = "enthusiastic university students coding at a software development hackathon, laptops with code editors and app prototypes on desks, modern campus innovation hub, bright dynamic tech atmosphere";
+        } else if (containsAny(combined, "music", "acoustic", "âm nhạc", "văn nghệ", "ca nhạc", "hát")) {
+            scene = "cozy campus acoustic music gathering, university students performing acoustic guitar on small warm wooden deck decorated with fairy string lights, happy student audience, intimate golden glow";
+        } else if (containsAny(combined, "xanh", "green", "môi trường", "tình nguyện", "ngoại khóa", "teambuilding", "trồng cây", "dọn vệ sinh")) {
+            scene = "cheerful university students in outdoor volunteer team activity on green sunny university campus, planting saplings, smiling young people working together, sunny blue sky, lush green grass and trees";
+        } else if (containsAny(combined, "khởi nghiệp", "startup", "founder", "pitching", "pitch", "gọi vốn")) {
+            scene = "young student entrepreneurs presenting startup pitch deck in modern innovation co-working space, whiteboard brainstorming, bright natural daylight, creative professional atmosphere";
+        } else if (containsAny(combined, "phỏng vấn", "cv", "tuyển dụng", "career", "việc làm", "interview")) {
+            scene = "university career coaching fair, students in smart casual attire practicing job interviews with mentors, resume reviews in bright professional hall, friendly warm atmosphere";
+        } else if (containsAny(combined, "tiếng anh", "english", "presentation", "thuyết trình", "clb")) {
+            scene = "students active group speaking club meeting, standing in bright modern lounge practicing public presentation, smiling, engaged lively discussion";
+        } else if (containsAny(combined, "hội thảo", "seminar", "talkshow", "hội nghị", "diễn giả")) {
+            scene = "professional academic seminar in an elegant university conference hall, speaker presenting on stage with projector screen, modern auditorium with attentive student audience, warm bright lighting";
+        } else if (containsAny(combined, "workshop", "thực hành", "khóa học", "lab")) {
+            scene = "interactive university workshop session in a bright modern classroom, enthusiastic students sitting at tables with laptops and notebooks, hands-on learning, warm pleasant lighting";
+        } else if (containsAny(combined, "cuộc thi", "contest", "quiz", "thi đấu")) {
+            scene = "thrilling university student innovation competition, teams presenting projects with prototype displays, judges, energetic academic tournament atmosphere, bright dynamic lighting";
+        } else {
+            scene = "vibrant university campus student event, modern college setting, happy young people collaborating, bright natural lighting";
+        }
+
+        return String.format(
+                "Photorealistic 16:9 banner photograph of %s. High quality 8k resolution, sharp focus, natural vivid lighting, real campus atmosphere, no text, no letters, no logos, no typography, no watermark, no dark empty stadium, no concert arena.",
+                scene
+        );
+    }
+
+    private static boolean containsAny(String text, String... keywords) {
+        for (String kw : keywords) {
+            String regex = "(^|[^a-zA-Z0-9_àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđ])"
+                    + Pattern.quote(kw)
+                    + "([^a-zA-Z0-9_àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđ]|$)";
+            if (Pattern.compile(regex, Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CHARACTER_CLASS).matcher(text).find()) {
+                return true;
+            }
+        }
+        return false;
     }
 
     // =====================================================
@@ -269,7 +313,7 @@ public class GeminiService {
         }
         root.add("contents", contents);
 
-        // generationConfig (tăng maxOutputTokens lên 2048 để tránh cắt ngắn bảng/danh sách)
+        // generationConfig (maxOutputTokens: 2048 để tránh cắt ngắn câu trả lời)
         JsonObject genConfig = new JsonObject();
         genConfig.addProperty("maxOutputTokens", 2048);
         genConfig.addProperty("temperature", 0.35);
@@ -294,7 +338,6 @@ public class GeminiService {
             }
             if (result.quotaExceeded()) {
                 System.err.println("[GeminiService] Model " + model + " hết quota (429) — đang thử model tiếp theo...");
-                // Tiếp tục thử model dự phòng tiếp theo
                 continue;
             }
         }
