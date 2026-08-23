@@ -1,6 +1,7 @@
 package com.eventhub.servlet.user;
 
 import com.eventhub.dao.CategoryDAO;
+import com.eventhub.dao.RegistrationDAO;
 import com.eventhub.dto.EventFilterDTO;
 import com.eventhub.dto.PaginationDTO;
 import com.eventhub.model.Category;
@@ -12,7 +13,9 @@ import jakarta.servlet.annotation.WebServlet;
 import jakarta.servlet.http.*;
 
 import java.io.IOException;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Hiển thị danh sách sự kiện cho User/Guest.
@@ -22,8 +25,9 @@ import java.util.List;
 @WebServlet("/events")
 public class EventListServlet extends HttpServlet {
 
-    private final EventService  eventService  = new EventService();
-    private final CategoryDAO   categoryDAO   = new CategoryDAO();
+    private final EventService eventService = new EventService();
+    private final CategoryDAO categoryDAO = new CategoryDAO();
+    private final RegistrationDAO registrationDAO = new RegistrationDAO();
 
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp)
@@ -42,43 +46,57 @@ public class EventListServlet extends HttpServlet {
             if (categoryIdStr != null && !categoryIdStr.isEmpty()) {
                 try {
                     filter.setCategoryId(Integer.parseInt(categoryIdStr));
-                } catch (NumberFormatException ignored) {}
+                } catch (NumberFormatException ignored) {
+                }
             }
 
             String pageStr = req.getParameter("page");
             if (pageStr != null) {
                 try {
                     filter.setPage(Integer.parseInt(pageStr));
-                } catch (NumberFormatException ignored) {}
+                } catch (NumberFormatException ignored) {
+                }
             }
 
             // --- Lấy dữ liệu ---
-            List<Event> events         = eventService.getEventsForUser(filter);
-            PaginationDTO pagination   = eventService.getPaginationForUser(filter);
-            List<Category> categories  = categoryDAO.findAll();
+            List<Event> events = eventService.getEventsForUser(filter);
+            PaginationDTO pagination = eventService.getPaginationForUser(filter);
+            List<Category> categories = categoryDAO.findAll();
 
-            // --- Gợi ý sự kiện ---
+            // --- Trạng thái đăng ký của user hiện tại ---
             User user = (User) req.getSession().getAttribute("loggedInUser");
             Integer userId = (user != null) ? user.getUserId() : null;
+
+            Map<Integer, String> registrationStatusByEvent = new HashMap<>();
+
+            if (userId != null && !user.isAdmin()) {
+                registrationStatusByEvent =
+                        registrationDAO.findStatusMapByUser(userId);
+            }
+
+            // --- Gợi ý sự kiện ---
             List<Event> recommendations = eventService.getRecommendations(userId);
 
             // --- Set attributes cho JSP ---
-            req.setAttribute("events",          events);
-            req.setAttribute("pagination",       pagination);
-            req.setAttribute("categories",       categories);
-            req.setAttribute("recommendations",  recommendations);
-            req.setAttribute("filter",           filter);
+            req.setAttribute("events", events);
+            req.setAttribute("pagination", pagination);
+            req.setAttribute("categories", categories);
+            req.setAttribute("recommendations", recommendations);
+            req.setAttribute("registrationStatusByEvent", registrationStatusByEvent);
+            req.setAttribute("filter", filter);
 
             // Giữ giá trị filter để hiển thị lại trên form
-            req.setAttribute("keyword",    filter.getKeyword());
+            req.setAttribute("keyword", filter.getKeyword());
             req.setAttribute("categoryId", filter.getCategoryId());
 
             req.getRequestDispatcher("/WEB-INF/views/user/event-list.jsp")
                     .forward(req, resp);
 
         } catch (Exception e) {
-            req.getSession().setAttribute("errorMsg",
-                    "Lỗi tải danh sách sự kiện: " + e.getMessage());
+            req.getSession().setAttribute(
+                    "errorMsg",
+                    "Lỗi tải danh sách sự kiện: " + e.getMessage()
+            );
             resp.sendRedirect(req.getContextPath() + "/");
         }
     }

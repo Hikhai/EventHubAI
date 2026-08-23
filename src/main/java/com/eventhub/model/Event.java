@@ -70,6 +70,14 @@ public class Event {
         return endTime != null && !endTime.isAfter(LocalDateTime.now());
     }
 
+    /** Đang diễn ra: đã bắt đầu nhưng chưa đến giờ kết thúc. */
+    public boolean isOngoing() {
+        LocalDateTime now = LocalDateTime.now();
+        return startTime != null && endTime != null
+                && !startTime.isAfter(now)
+                && endTime.isAfter(now);
+    }
+
     public boolean isCancelled() {
         return "CANCELLED".equals(status);
     }
@@ -130,7 +138,9 @@ public class Event {
         if (registrationDeadline == null) return "";
         return registrationDeadline.format(INPUT_FORMAT);
     }
+
     // ===== GETTERS & SETTERS =====
+
     public int getEventId() { return eventId; }
     public void setEventId(int eventId) { this.eventId = eventId; }
 
@@ -159,14 +169,18 @@ public class Event {
     public void setEndTime(LocalDateTime endTime) { this.endTime = endTime; }
 
     public LocalDateTime getRegistrationDeadline() { return registrationDeadline; }
+
     public void setRegistrationDeadline(LocalDateTime registrationDeadline) {
         this.registrationDeadline = registrationDeadline;
     }
 
     public int getMaxParticipants() { return maxParticipants; }
-    public void setMaxParticipants(int maxParticipants) { this.maxParticipants = maxParticipants; }
+    public void setMaxParticipants(int maxParticipants) {
+        this.maxParticipants = maxParticipants;
+    }
 
     public int getCurrentRegistered() { return currentRegistered; }
+
     public void setCurrentRegistered(int currentRegistered) {
         this.currentRegistered = currentRegistered;
     }

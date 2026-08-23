@@ -5,7 +5,9 @@ import com.eventhub.model.Registration;
 
 import java.sql.*;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * DAO cho bảng registrations.
@@ -48,6 +50,26 @@ public class RegistrationDAO {
             stmt.setInt(1, userId);
             return mapList(stmt, this::mapResultSetWithEvent);
         }
+    }
+
+    /**
+     * Lấy nhanh trạng thái đăng ký của user theo event để hiển thị trên
+     * danh sách sự kiện mà không cần tải toàn bộ thông tin JOIN.
+     */
+    public Map<Integer, String> findStatusMapByUser(int userId) throws SQLException {
+        String sql = "SELECT event_id, status FROM registrations WHERE user_id = ?";
+        Map<Integer, String> statusMap = new HashMap<>();
+
+        try (Connection conn = DBConnection.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setInt(1, userId);
+            try (ResultSet rs = stmt.executeQuery()) {
+                while (rs.next()) {
+                    statusMap.put(rs.getInt("event_id"), rs.getString("status"));
+                }
+            }
+        }
+        return statusMap;
     }
 
     public List<Registration> findAllByEvent(int eventId) throws SQLException {
