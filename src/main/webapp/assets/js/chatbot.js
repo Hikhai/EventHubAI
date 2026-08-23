@@ -7,7 +7,7 @@ document.addEventListener('DOMContentLoaded', function () {
     const sendBtn = document.getElementById('chatbotSend');
     const quickReplies = document.querySelectorAll('.quick-reply-btn');
 
-    if (!toggleBtn) return;
+    if (!toggleBtn || !chatWindow) return;
 
     const contextPath = document.querySelector('meta[name="context-path"]')
         ?.getAttribute('content') || '';
@@ -17,7 +17,9 @@ document.addEventListener('DOMContentLoaded', function () {
     function openChat() {
         chatWindow.classList.remove('hidden');
         toggleBtn.classList.add('hidden');
-        input.focus();
+        if (input) {
+            setTimeout(function () { input.focus(); }, 100);
+        }
     }
 
     function closeChat() {
@@ -26,7 +28,9 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     toggleBtn.addEventListener('click', openChat);
-    closeBtn.addEventListener('click', closeChat);
+    if (closeBtn) {
+        closeBtn.addEventListener('click', closeChat);
+    }
 
     document.addEventListener('keydown', function (e) {
         if (e.key === 'Escape' && !chatWindow.classList.contains('hidden')) {
@@ -35,13 +39,14 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 
     function sendMessage() {
+        if (!input) return;
         const message = input.value.trim();
         if (!message || sending) return;
 
         sending = true;
         appendMessage('user', message);
         input.value = '';
-        sendBtn.disabled = true;
+        if (sendBtn) sendBtn.disabled = true;
 
         const typingId = showTyping();
 
@@ -52,38 +57,51 @@ document.addEventListener('DOMContentLoaded', function () {
             },
             body: 'message=' + encodeURIComponent(message)
         })
-            .then(function (res) { return res.json(); })
+            .then(function (res) {
+                if (res.status === 401) {
+                    return {
+                        success: false,
+                        message: 'Vui lòng <a href="' + contextPath + '/auth/login">đăng nhập</a> để trò chuyện cùng trợ lý AI.'
+                    };
+                }
+                return res.json();
+            })
             .then(function (data) {
                 removeTyping(typingId);
                 if (data.success) {
                     appendMessage('assistant', data.reply, data.timestamp);
                 } else {
-                    appendMessage('assistant', data.message || 'Xin lỗi, có lỗi xảy ra.');
+                    appendMessage('assistant', data.message || 'Xin lỗi, có lỗi xảy ra. Vui lòng thử lại sau.');
                 }
             })
             .catch(function () {
                 removeTyping(typingId);
-                appendMessage('assistant', 'Xin lỗi, không thể kết nối tới máy chủ.');
+                appendMessage('assistant', 'Xin lỗi, không thể kết nối tới máy chủ. Vui lòng kiểm tra lại kết nối!');
             })
             .finally(function () {
                 sending = false;
-                sendBtn.disabled = false;
-                input.focus();
+                if (sendBtn) sendBtn.disabled = false;
+                if (input) input.focus();
             });
     }
 
-    input.addEventListener('keypress', function (e) {
-        if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault();
-            sendMessage();
-        }
-    });
+    if (input) {
+        input.addEventListener('keypress', function (e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+            }
+        });
+    }
 
-    sendBtn.addEventListener('click', sendMessage);
+    if (sendBtn) {
+        sendBtn.addEventListener('click', sendMessage);
+    }
 
     quickReplies.forEach(function (btn) {
         btn.addEventListener('click', function () {
-            input.value = btn.textContent;
+            if (!input) return;
+            input.value = btn.textContent.trim();
             sendMessage();
         });
     });
@@ -96,7 +114,7 @@ document.addEventListener('DOMContentLoaded', function () {
         bubble.className = 'chat-bubble';
         if (role === 'assistant') {
             bubble.classList.add('chat-bubble-md');
-            bubble.innerHTML = formatChatHtml(content);
+            bubble.innerHTML = formatChatHtml(content, contextPath);
             if (bubble.querySelector('table')) {
                 bubble.classList.add('has-table');
             }
@@ -124,10 +142,14 @@ document.addEventListener('DOMContentLoaded', function () {
             .replace(/"/g, '&quot;');
     }
 
-    function inlineFormat(text) {
-        return text
-            .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-            .replace(/`([^`]+)`/g, '<code>$1</code>');
+    function inlineFormat(text, ctx) {
+        ctx = ctx || '';
+        return String(text)
+            .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>')
+            .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+            .replace(/\*([^*]+)\*/g, '<em>$1</em>')
+            .replace(/`([^`]+)`/g, '<code>$1</code>')
+            .replace(/(^|\s)(\/(?:events|my-events|auth\/login|auth\/register)[^\s.,;)]*)/g, '$1<a href="' + ctx + '$2">$2</a>');
     }
 
     function splitTableRow(line) {
@@ -142,7 +164,8 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     function isTableRow(line) {
-        return line.trim().indexOf('|') !== -1;
+        const trimmed = line.trim();
+        return trimmed.indexOf('|') !== -1 && splitTableRow(trimmed).length >= 2;
     }
 
     function isBullet(line) {
@@ -153,20 +176,14 @@ document.addEventListener('DOMContentLoaded', function () {
         return /^\s*\d+[.)]\s+/.test(line);
     }
 
-    function normalizeChatText(raw) {
-        return String(raw)
-            .replace(/\r\n/g, '\n')
-            .replace(/\*\*Bước\s*(\d+)\s*:\*\*\s*/gi, '\n\n$1. ')
-            .replace(/Bước\s*(\d+)\s*:\s*/gi, '\n$1. ')
-            .replace(/\*\*([^*]+)\*\*(?=\S)/g, '**$1** ')
-            .replace(/\s+\*\s+\*\*/g, '\n**')
-            .replace(/\n{3,}/g, '\n\n')
-            .trim();
+    function isHeading(line) {
+        return /^\s*#{1,4}\s+/.test(line);
     }
 
-    function formatChatHtml(raw) {
-        const normalized = normalizeChatText(String(raw || ''));
-        const escaped = escapeHtml(normalized);
+    function formatChatHtml(raw, ctx) {
+        ctx = ctx || '';
+        const clean = String(raw || '').replace(/\r\n/g, '\n').trim();
+        const escaped = escapeHtml(clean);
         const lines = escaped.split('\n');
         const out = [];
         let i = 0;
@@ -175,71 +192,89 @@ document.addEventListener('DOMContentLoaded', function () {
             const line = lines[i];
 
             if (line.trim() === '') {
-                i += 1;
+                i++;
                 continue;
             }
 
+            // Bảng Markdown
             if (isTableRow(line) && i + 1 < lines.length && isTableSeparator(lines[i + 1])) {
                 const headers = splitTableRow(line);
                 i += 2;
                 const rows = [];
                 while (i < lines.length && isTableRow(lines[i]) && !isTableSeparator(lines[i])) {
                     rows.push(splitTableRow(lines[i]));
-                    i += 1;
+                    i++;
                 }
-                out.push(renderTable(headers, rows));
+                // Chỉ hiển thị bảng nếu có ít nhất 1 dòng dữ liệu
+                if (rows.length > 0) {
+                    out.push(renderTable(headers, rows, ctx));
+                }
                 continue;
             }
 
+            // Tiêu đề Markdown (# / ## / ###)
+            if (isHeading(line)) {
+                const headingText = line.replace(/^\s*#{1,4}\s+/, '');
+                out.push('<div class="chat-heading">' + inlineFormat(headingText, ctx) + '</div>');
+                i++;
+                continue;
+            }
+
+            // Danh sách không thứ tự (- / * / •)
             if (isBullet(line)) {
                 const items = [];
                 while (i < lines.length && isBullet(lines[i])) {
                     items.push(lines[i].replace(/^\s*[-*•]\s+/, ''));
-                    i += 1;
+                    i++;
                 }
                 out.push('<ul>' + items.map(function (item) {
-                    return '<li>' + inlineFormat(item) + '</li>';
+                    return '<li>' + inlineFormat(item, ctx) + '</li>';
                 }).join('') + '</ul>');
                 continue;
             }
 
+            // Danh sách có thứ tự (1. / 2.)
             if (isOrdered(line)) {
                 const items = [];
                 while (i < lines.length && isOrdered(lines[i])) {
                     items.push(lines[i].replace(/^\s*\d+[.)]\s+/, ''));
-                    i += 1;
+                    i++;
                 }
                 out.push('<ol>' + items.map(function (item) {
-                    return '<li>' + inlineFormat(item) + '</li>';
+                    return '<li>' + inlineFormat(item, ctx) + '</li>';
                 }).join('') + '</ol>');
                 continue;
             }
 
+            // Đoạn văn thông thường
             const para = [];
             while (i < lines.length
                     && lines[i].trim() !== ''
                     && !isTableRow(lines[i])
+                    && !isHeading(lines[i])
                     && !isBullet(lines[i])
                     && !isOrdered(lines[i])) {
-                para.push(inlineFormat(lines[i].trim()));
-                i += 1;
+                para.push(inlineFormat(lines[i].trim(), ctx));
+                i++;
             }
-            out.push('<p>' + para.join('<br>') + '</p>');
+            if (para.length > 0) {
+                out.push('<p>' + para.join('<br>') + '</p>');
+            }
         }
 
         return out.join('') || '<p></p>';
     }
 
-    function renderTable(headers, rows) {
+    function renderTable(headers, rows, ctx) {
         let html = '<div class="chat-md-table-wrap"><table class="chat-md-table"><thead><tr>';
         headers.forEach(function (h) {
-            html += '<th>' + inlineFormat(h) + '</th>';
+            html += '<th>' + inlineFormat(h, ctx) + '</th>';
         });
         html += '</tr></thead><tbody>';
         rows.forEach(function (row) {
             html += '<tr>';
             headers.forEach(function (_, idx) {
-                html += '<td>' + inlineFormat(row[idx] || '') + '</td>';
+                html += '<td>' + inlineFormat(row[idx] || '', ctx) + '</td>';
             });
             html += '</tr>';
         });
