@@ -19,6 +19,9 @@ document.addEventListener('DOMContentLoaded', function () {
 
     let sending = false;
     let historyReady = false;
+    let activeJobId = null;
+    let activeTypingId = null;
+    let pollTimer = null;
     const conversationId = getConversationId();
 
     // Mỗi tab/trang dùng chung conversation id trong localStorage. Vì API
@@ -99,17 +102,20 @@ document.addEventListener('DOMContentLoaded', function () {
     function sendMessage() {
         if (!input || !historyReady) return;
         const message = input.value.trim();
-        if (!message || sending) return;
+        if (!message || sending || activeJobId) return;
 
         sending = true;
+        historyReady = false;
         appendMessage('user', message);
         input.value = '';
         if (sendBtn) sendBtn.disabled = true;
 
         const typingId = showTyping();
+        activeTypingId = typingId;
 
         fetch(apiUrl, {
             method: 'POST',
+            keepalive: true,
             headers: {
                 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8'
             },
@@ -131,25 +137,114 @@ document.addEventListener('DOMContentLoaded', function () {
                 });
             })
             .then(function (data) {
+                if (data.success && data.pending && data.jobId) {
+                    // POST chỉ xếp job rồi trả về ngay. Worker server tiếp tục
+                    // chạy dù trang hiện tại bị unload khi user chuyển trang.
+                    activeJobId = data.jobId;
+                    pollJob(activeJobId, typingId);
+                    return;
+                }
+
                 removeTyping(typingId);
-                if (data.success) {
+                activeTypingId = null;
+                if (data.success && data.reply) {
                     appendMessage('assistant', data.reply, data.timestamp);
                 } else {
                     appendMessage('assistant', data.message || 'Xin lỗi, có lỗi xảy ra. Vui lòng thử lại sau.');
                 }
+                setChatReady();
             })
             .catch(function () {
                 removeTyping(typingId);
-                appendMessage('assistant', 'Xin lỗi, không thể kết nối tới máy chủ. Vui lòng kiểm tra lại kết nối!');
+                activeTypingId = null;
+                activeJobId = null;
+                // Response POST có thể bị mất khi mạng/trang thay đổi dù
+                // server đã nhận job. Đọc lại state từ server để tự resume,
+                // thay vì mở khóa chat rồi tạo request trùng.
+                loadHistory('Xin lỗi, không thể xác nhận trạng thái câu hỏi.');
             })
             .finally(function () {
                 sending = false;
-                if (sendBtn) sendBtn.disabled = false;
+                if (historyReady && !activeJobId && sendBtn) sendBtn.disabled = false;
                 if (input) input.focus();
             });
     }
 
-    function loadHistory() {
+    function setChatReady() {
+        historyReady = true;
+        if (sendBtn && !sending && !activeJobId) sendBtn.disabled = false;
+    }
+
+    function scheduleJobPoll(jobId, typingId, delay) {
+        if (pollTimer) clearTimeout(pollTimer);
+        pollTimer = setTimeout(function () {
+            pollJob(jobId, typingId);
+        }, delay || 1200);
+    }
+
+    function pollJob(jobId, typingId) {
+        if (!activeJobId || activeJobId !== jobId) return;
+
+        fetch(apiUrl + '?conversationId=' + encodeURIComponent(conversationId)
+            + '&jobId=' + encodeURIComponent(jobId), {
+                method: 'GET',
+                headers: { 'Accept': 'application/json' }
+            })
+            .then(function (res) {
+                if (!res.ok) throw new Error('Không đọc được trạng thái job');
+                return res.json();
+            })
+            .then(function (data) {
+                if (activeJobId !== jobId) return;
+
+                if (data.status === 'COMPLETED') {
+                    if (pollTimer) clearTimeout(pollTimer);
+                    activeJobId = null;
+                    activeTypingId = null;
+                    removeTyping(typingId);
+                    if (data.reply) {
+                        appendMessage('assistant', data.reply, data.timestamp);
+                        setChatReady();
+                    } else {
+                        // Trường hợp job đã hoàn tất nhưng response không còn
+                        // trong memory: đọc lại bản ghi đã lưu trong DB.
+                        loadHistory();
+                    }
+                    return;
+                }
+
+                if (data.status === 'CANCELLED' || data.status === 'FAILED'
+                        || data.status === 'IDLE') {
+                    if (pollTimer) clearTimeout(pollTimer);
+                    activeJobId = null;
+                    activeTypingId = null;
+                    removeTyping(typingId);
+                    if (data.status !== 'CANCELLED' && data.status !== 'IDLE') {
+                        appendMessage('assistant', data.message
+                            || 'Không thể tạo câu trả lời. Bạn vui lòng thử lại nhé!');
+                    }
+                    if (data.status === 'IDLE') {
+                        loadHistory();
+                    } else {
+                        setChatReady();
+                    }
+                    return;
+                }
+
+                // PENDING/PROCESSING: tiếp tục hỏi trạng thái. Request này
+                // tồn tại độc lập với trang đã gửi câu hỏi.
+                scheduleJobPoll(jobId, typingId, 1200);
+            })
+            .catch(function () {
+                // Lỗi đọc status tạm thời không được biến thành lỗi chat;
+                // giữ spinner và thử lại.
+                if (activeJobId === jobId) {
+                    scheduleJobPoll(jobId, typingId, 2000);
+                }
+            });
+    }
+
+    function loadHistory(fallbackMessage) {
         fetch(apiUrl + '?conversationId=' + encodeURIComponent(conversationId), {
             method: 'GET',
             headers: { 'Accept': 'application/json' }
@@ -166,26 +261,48 @@ document.addEventListener('DOMContentLoaded', function () {
                 messagesArea.innerHTML = '';
                 if (data.messages.length === 0) {
                     messagesArea.innerHTML = initialWelcome;
-                    return;
+                } else {
+                    data.messages.forEach(function (message) {
+                        const role = message.role === 'assistant' ? 'assistant' : 'user';
+                        appendMessage(role, message.content || '', message.timestamp);
+                    });
                 }
 
-                data.messages.forEach(function (message) {
-                    const role = message.role === 'assistant' ? 'assistant' : 'user';
-                    appendMessage(role, message.content || '', message.timestamp);
-                });
+                // Nếu job vừa hoàn tất đúng lúc GET đọc lịch sử, DB query có
+                // thể chỉ thấy câu hỏi còn response đã có reply trong status.
+                // Bổ sung reply khi lịch sử chưa chứa nó, tránh bỏ sót câu trả lời.
+                if (data.status === 'COMPLETED' && data.reply) {
+                    const lastMessage = data.messages[data.messages.length - 1];
+                    if (!lastMessage || lastMessage.role !== 'assistant'
+                            || lastMessage.content !== data.reply) {
+                        appendMessage('assistant', data.reply, data.timestamp);
+                    }
+                }
+
+                if (data.pending && data.jobId) {
+                    historyReady = false;
+                    activeJobId = data.jobId;
+                    activeTypingId = showTyping();
+                    pollJob(activeJobId, activeTypingId);
+                } else {
+                    activeJobId = null;
+                    activeTypingId = null;
+                    setChatReady();
+                }
             })
             .catch(function () {
                 // Giữ lời chào mặc định để lỗi đọc lịch sử không chặn chatbot.
                 messagesArea.innerHTML = initialWelcome;
-            })
-            .finally(function () {
-                historyReady = true;
-                if (sendBtn && !sending) sendBtn.disabled = false;
+                activeJobId = null;
+                activeTypingId = null;
+                setChatReady();
+                if (fallbackMessage) appendMessage('assistant', fallbackMessage);
             });
     }
 
     function clearHistory() {
-        if (sending || !window.confirm('Xóa toàn bộ lịch sử trò chuyện này?')) return;
+        if (sending || activeJobId || !historyReady
+                || !window.confirm('Xóa toàn bộ lịch sử trò chuyện này?')) return;
 
         if (clearBtn) clearBtn.disabled = true;
         fetch(apiUrl + '?conversationId=' + encodeURIComponent(conversationId), {
@@ -198,6 +315,7 @@ document.addEventListener('DOMContentLoaded', function () {
             })
             .then(function () {
                 messagesArea.innerHTML = initialWelcome;
+                setChatReady();
             })
             .catch(function () {
                 appendMessage('assistant', 'Không thể xóa lịch sử lúc này. Bạn vui lòng thử lại sau.');

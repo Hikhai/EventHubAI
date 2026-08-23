@@ -29,6 +29,8 @@ import java.util.List;
  * - form: message=...&conversationId=...
  * - JSON: {"message":"...", "conversationId":"..."}
  *
+ * POST chỉ xếp job và trả về nhanh; Gemini được xử lý ở worker nền nên
+ * việc chuyển trang không hủy quá trình tạo câu trả lời.
  * Người dùng phải đăng nhập. Lịch sử được phân quyền theo user lấy từ
  * session server, không tin userId do client gửi lên.
  */
@@ -56,12 +58,25 @@ public class ChatbotServlet extends HttpServlet {
 
         String conversationId = chatbotService.resolveConversationId(
                 req.getParameter("conversationId"), session);
+        String requestedJobId = req.getParameter("jobId");
+
+        // Polling status chỉ cần trạng thái/reply; không cần tải lại cả lịch sử.
+        if (!isBlank(requestedJobId)) {
+            ChatbotService.ChatJobStatus status = chatbotService.getJobStatus(
+                    session, user, conversationId, requestedJobId);
+            writeJobStatus(resp, status);
+            return;
+        }
+
         List<ChatMessage> history = chatbotService.getHistory(
                 session, user, conversationId);
+        ChatbotService.ChatJobStatus status = chatbotService.getJobStatus(
+                session, user, conversationId, null);
 
         JsonObject json = new JsonObject();
         json.addProperty("success", true);
         json.addProperty("conversationId", conversationId);
+        addJobFields(json, status);
 
         JsonArray messages = new JsonArray();
         for (ChatMessage message : history) {
@@ -123,12 +138,22 @@ public class ChatbotServlet extends HttpServlet {
 
         String resolvedConversationId = chatbotService.resolveConversationId(
                 conversationId, session);
-        String reply = chatbotService.processMessage(
+        ChatbotService.AsyncChatResult result = chatbotService.startAsyncMessage(
                 message, session, user, resolvedConversationId);
+
+        if (!result.accepted()) {
+            writeError(resp, HttpServletResponse.SC_CONFLICT,
+                    result.message() == null
+                            ? "Câu hỏi chưa được tiếp nhận. Bạn vui lòng thử lại."
+                            : result.message());
+            return;
+        }
 
         JsonObject json = new JsonObject();
         json.addProperty("success", true);
-        json.addProperty("reply", reply);
+        json.addProperty("pending", true);
+        json.addProperty("status", "PENDING");
+        json.addProperty("jobId", result.jobId());
         json.addProperty("conversationId", resolvedConversationId);
         json.addProperty("timestamp", LocalTime.now().format(TIME_FORMAT));
         resp.getWriter().write(json.toString());
@@ -154,6 +179,38 @@ public class ChatbotServlet extends HttpServlet {
         JsonObject json = new JsonObject();
         json.addProperty("success", true);
         resp.getWriter().write(json.toString());
+    }
+
+    private void writeJobStatus(HttpServletResponse resp,
+                                ChatbotService.ChatJobStatus status)
+            throws IOException {
+        JsonObject json = new JsonObject();
+        json.addProperty("success", true);
+        addJobFields(json, status);
+        resp.getWriter().write(json.toString());
+    }
+
+    private void addJobFields(JsonObject json,
+                              ChatbotService.ChatJobStatus status) {
+        if (status == null) {
+            json.addProperty("status", "IDLE");
+            json.addProperty("pending", false);
+            return;
+        }
+
+        json.addProperty("status", status.status());
+        json.addProperty("pending", status.pending());
+        json.addProperty("jobId", status.jobId());
+        if (status.reply() != null) {
+            json.addProperty("reply", status.reply());
+        }
+        if (status.error() != null) {
+            json.addProperty("message", status.error());
+        }
+        if (status.completedAt() != null) {
+            json.addProperty("timestamp",
+                    status.completedAt().format(TIME_FORMAT));
+        }
     }
 
     private User getLoggedInUser(HttpSession session) {

@@ -348,8 +348,10 @@ flowchart LR
   API --> CS[ChatbotService]
   CS --> CL[ChatLogDAO]
   CL --> DB[(chat_logs: user + conversation)]
-  CS --> DB2[(Sự kiện + đăng ký của user)]
-  CS --> GM[GeminiService.chat]
+  CS --> W[Chat worker nền]
+  W --> DB2[(Sự kiện + đăng ký của user)]
+  W --> GM[GeminiService.chat]
+  JS -->|poll status| API
   CS --> SS[Lưu cache trong session]
 ```
 
@@ -360,6 +362,8 @@ flowchart LR
 | `dao/ChatLogDAO.java` + `model/ChatMessage.java` | Đọc/ghi lịch sử từ bảng `chat_logs` |
 | `service/ChatbotService.java` | Prompt + lịch sử DB/session + context sự kiện |
 | `GeminiService.chat` | Gọi model text với timeout riêng cho chatbot |
+
+POST chỉ ghi câu hỏi và trả job ngay; worker nền tạo reply, lưu vào `chat_logs`, còn `chatbot.js` polling trạng thái để hiển thị kết quả. Vì vậy chuyển trang/tab không làm hủy request Gemini.
 
 Chatbot yêu cầu đăng nhập. Lịch sử được lọc theo user ở server, nên chuyển trang hoặc mở tab mới vẫn thấy lại cuộc trò chuyện. User đã login thì prompt kèm sự kiện mình đã đăng ký để câu trả lời sát hơn.
 
