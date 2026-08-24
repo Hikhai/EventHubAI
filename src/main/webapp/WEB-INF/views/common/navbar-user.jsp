@@ -32,6 +32,12 @@
                             <i class="bi bi-bookmark-star"></i> Sự kiện của tôi
                         </a>
                     </li>
+                    <li class="nav-item">
+                        <a class="nav-link ${fn:contains(currentUri, '/user/payments') ? 'active' : ''}"
+                           href="${pageContext.request.contextPath}/user/payments">
+                            <i class="bi bi-receipt"></i> Thanh toán
+                        </a>
+                    </li>
                 </c:if>
             </ul>
 

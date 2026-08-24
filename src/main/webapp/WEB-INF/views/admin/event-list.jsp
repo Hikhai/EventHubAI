@@ -84,6 +84,7 @@
                                 <th style="width:80px;">Ảnh</th>
                                 <th>Sự kiện</th>
                                 <th style="width:120px;">Danh mục</th>
+                                <th style="width:120px;">Giá vé</th>
                                 <th style="width:140px;">Thời gian</th>
                                 <th style="width:110px;">Đăng ký</th>
                                 <th style="width:110px;">Trạng thái</th>
@@ -121,6 +122,13 @@
                                             <span class="badge bg-secondary">
                                                     ${event.categoryName}
                                             </span>
+                                    </td>
+
+                                        <%-- Giá vé --%>
+                                    <td>
+                                        <span class="fw-semibold ${event.free ? 'text-success' : 'text-primary'}">
+                                            ${event.formattedTicketPrice}
+                                        </span>
                                     </td>
 
                                         <%-- Thời gian --%>

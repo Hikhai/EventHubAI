@@ -1,8 +1,11 @@
 package com.eventhub.servlet.user;
 
 import com.eventhub.exception.EventException;
+import com.eventhub.exception.PaymentException;
 import com.eventhub.exception.RegistrationException;
+import com.eventhub.model.Registration;
 import com.eventhub.model.User;
+import com.eventhub.service.PaymentService;
 import com.eventhub.service.RegistrationService;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
@@ -19,6 +22,7 @@ import java.io.IOException;
 public class CancelEventServlet extends HttpServlet {
 
     private final RegistrationService registrationService = new RegistrationService();
+    private final PaymentService paymentService = new PaymentService();
 
     @Override
     protected void doPost(HttpServletRequest req, HttpServletResponse resp)
@@ -36,12 +40,19 @@ public class CancelEventServlet extends HttpServlet {
         }
 
         try {
-            registrationService.cancelRegistration(user.getUserId(), eventId);
+            Registration registration = registrationService
+                    .getUserRegistration(user.getUserId(), eventId);
+            if (registration != null && "PENDING_PAYMENT".equals(registration.getStatus())) {
+                paymentService.cancelPendingReservation(user.getUserId(), eventId);
+                req.getSession().setAttribute("successMsg",
+                        "Đã hủy giao dịch và trả lại chỗ giữ.");
+            } else {
+                registrationService.cancelRegistration(user.getUserId(), eventId);
+                req.getSession().setAttribute("successMsg",
+                        "Đã hủy đăng ký thành công.");
+            }
 
-            req.getSession().setAttribute("successMsg",
-                    "Đã hủy đăng ký thành công.");
-
-        } catch (EventException | RegistrationException e) {
+        } catch (EventException | RegistrationException | PaymentException e) {
             req.getSession().setAttribute("errorMsg", e.getMessage());
 
         } catch (Exception e) {

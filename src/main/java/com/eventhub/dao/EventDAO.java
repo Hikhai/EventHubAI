@@ -94,14 +94,14 @@ public class EventDAO {
     public int insert(Event event) throws SQLException {
         String sql = "INSERT INTO events (title, description, summary_ai, location, " +
                 "start_time, end_time, registration_deadline, max_participants, " +
-                "status, category_id, created_by) " +
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                "ticket_price, currency, status, category_id, created_by) " +
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
         try (Connection conn = DBConnection.getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
 
             bindEventFields(stmt, event);
-            stmt.setInt(11, event.getCreatedBy());
+            stmt.setInt(13, event.getCreatedBy());
             stmt.executeUpdate();
 
             try (ResultSet keys = stmt.getGeneratedKeys()) {
@@ -114,12 +114,12 @@ public class EventDAO {
     public void update(Event event) throws SQLException {
         String sql = "UPDATE events SET title=?, description=?, summary_ai=?, location=?, " +
                 "start_time=?, end_time=?, registration_deadline=?, max_participants=?, " +
-                "status=?, category_id=? WHERE event_id=?";
+                "ticket_price=?, currency=?, status=?, category_id=? WHERE event_id=?";
 
         try (Connection conn = DBConnection.getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql)) {
             bindEventFields(stmt, event);
-            stmt.setInt(11, event.getEventId());
+            stmt.setInt(13, event.getEventId());
             stmt.executeUpdate();
         }
     }
@@ -183,11 +183,20 @@ public class EventDAO {
         try {
             DBConnection.inTransaction(conn -> {
                 executeUpdate(conn,
-                        "UPDATE registrations SET status='CANCELLED', cancelled_at=NOW() " +
-                                "WHERE event_id=? AND status='REGISTERED'",
+                        "UPDATE payments p JOIN registrations r " +
+                                "ON r.registration_id=p.registration_id " +
+                                "SET p.failure_reason='Sự kiện bị hủy bởi quản trị viên', " +
+                                "p.status=CASE " +
+                                "WHEN p.status='PAID' THEN 'REFUND_PENDING' " +
+                                "WHEN p.status='PENDING' THEN 'CANCELLED' ELSE p.status END " +
+                                "WHERE r.event_id=? AND p.status IN ('PAID','PENDING')",
                         eventId);
                 executeUpdate(conn,
-                        "UPDATE events SET status='CANCELLED' WHERE event_id=?",
+                        "UPDATE registrations SET status='CANCELLED', cancelled_at=NOW() " +
+                                "WHERE event_id=? AND status IN ('REGISTERED','PENDING_PAYMENT')",
+                        eventId);
+                executeUpdate(conn,
+                        "UPDATE events SET status='CANCELLED', current_registered=0 WHERE event_id=?",
                         eventId);
             });
         } catch (SQLException e) {
@@ -198,7 +207,8 @@ public class EventDAO {
     }
 
     public int countRegistered(int eventId) throws SQLException {
-        String sql = "SELECT COUNT(*) FROM registrations WHERE event_id=? AND status='REGISTERED'";
+        String sql = "SELECT COUNT(*) FROM registrations WHERE event_id=? " +
+                "AND status IN ('REGISTERED','PENDING_PAYMENT')";
 
         try (Connection conn = DBConnection.getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql)) {
@@ -269,6 +279,8 @@ public class EventDAO {
         event.setLocation(rs.getString("location"));
         event.setMaxParticipants(rs.getInt("max_participants"));
         event.setCurrentRegistered(rs.getInt("current_registered"));
+        event.setTicketPrice(rs.getBigDecimal("ticket_price"));
+        event.setCurrency(rs.getString("currency"));
         event.setAvgRating(rs.getDouble("avg_rating"));
         event.setTotalReviews(rs.getInt("total_reviews"));
         event.setStatus(rs.getString("status"));
@@ -288,6 +300,9 @@ public class EventDAO {
 
         Timestamp createdAt = rs.getTimestamp("created_at");
         if (createdAt != null) event.setCreatedAt(createdAt.toLocalDateTime());
+
+        Timestamp updatedAt = rs.getTimestamp("updated_at");
+        if (updatedAt != null) event.setUpdatedAt(updatedAt.toLocalDateTime());
 
         return event;
     }
@@ -339,8 +354,10 @@ public class EventDAO {
         stmt.setTimestamp(6, Timestamp.valueOf(event.getEndTime()));
         stmt.setTimestamp(7, Timestamp.valueOf(event.getRegistrationDeadline()));
         stmt.setInt(8, event.getMaxParticipants());
-        stmt.setString(9, event.getStatus());
-        stmt.setInt(10, event.getCategoryId());
+        stmt.setBigDecimal(9, event.getTicketPrice());
+        stmt.setString(10, event.getCurrency());
+        stmt.setString(11, event.getStatus());
+        stmt.setInt(12, event.getCategoryId());
     }
 
     private static void executeUpdate(Connection conn, String sql, int eventId) throws SQLException {

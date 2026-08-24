@@ -213,6 +213,24 @@
                                    required>
                         </div>
 
+                        <%-- Giá vé --%>
+                        <div class="mb-3">
+                            <label class="form-label">
+                                Giá vé (VNĐ) <span class="text-danger">*</span>
+                            </label>
+                            <div class="input-group">
+                                <input type="number" class="form-control"
+                                       name="ticketPrice"
+                                       value="${event.ticketPrice}"
+                                       min="0" max="999999999999" step="1000"
+                                       required>
+                                <span class="input-group-text">₫</span>
+                            </div>
+                            <div class="form-hint">
+                                Nhập 0 cho sự kiện miễn phí. Không thể đổi giá khi đã có giao dịch.
+                            </div>
+                        </div>
+
                         <%-- Trạng thái --%>
                         <div class="mb-3">
                             <label class="form-label">

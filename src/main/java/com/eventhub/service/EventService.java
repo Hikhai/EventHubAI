@@ -2,6 +2,7 @@ package com.eventhub.service;
 
 import com.eventhub.dao.CategoryDAO;
 import com.eventhub.dao.EventDAO;
+import com.eventhub.dao.PaymentDAO;
 import com.eventhub.dto.EventFilterDTO;
 import com.eventhub.dto.PaginationDTO;
 import com.eventhub.exception.EventException;
@@ -9,6 +10,7 @@ import com.eventhub.model.Category;
 import com.eventhub.model.Event;
 import jakarta.servlet.http.Part;
 
+import java.math.BigDecimal;
 import java.sql.SQLException;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
@@ -21,6 +23,7 @@ import java.util.List;
 public class EventService {
 
     private final EventDAO eventDAO = new EventDAO();
+    private final PaymentDAO paymentDAO = new PaymentDAO();
     private final CategoryDAO categoryDAO = new CategoryDAO();
     private final ImageService imageService = new ImageService();
 
@@ -130,6 +133,14 @@ public class EventService {
         if (event.getMaxParticipants() < existing.getCurrentRegistered()) {
             throw new EventException("Số người tối đa không thể nhỏ hơn số người đã đăng ký ("
                     + existing.getCurrentRegistered() + " người).");
+        }
+
+        if (event.getTicketPrice().compareTo(existing.getTicketPrice()) != 0
+                && (existing.getCurrentRegistered() > 0
+                || paymentDAO.countByEvent(existing.getEventId()) > 0)) {
+            throw new EventException(
+                    "Không thể đổi giá vé khi sự kiện đã có người giữ chỗ hoặc giao dịch."
+            );
         }
 
         // Giữ lại thông tin ảnh cũ để ImageService xóa đĩa nếu có upload mới
@@ -246,6 +257,15 @@ public class EventService {
         if (event.getMaxParticipants() > 10000) {
             throw new EventException("Số người tham gia tối đa không được quá 10.000.");
         }
+
+        BigDecimal price = event.getTicketPrice();
+        if (price == null || price.scale() > 0 || price.signum() < 0) {
+            throw new EventException("Giá vé phải là số nguyên không âm.");
+        }
+        if (price.compareTo(new BigDecimal("999999999999")) > 0) {
+            throw new EventException("Giá vé vượt quá giới hạn cho phép.");
+        }
+        event.setCurrency("VND");
 
         if (event.getCategoryId() <= 0) {
             throw new EventException("Vui lòng chọn danh mục sự kiện.");

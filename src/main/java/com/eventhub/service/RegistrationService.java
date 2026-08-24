@@ -34,6 +34,11 @@ public class RegistrationService {
                 if (!"PUBLISHED".equals(event.getStatus())) {
                     throw new EventException("Sự kiện này hiện không nhận đăng ký.");
                 }
+                if (!event.isFree()) {
+                    throw new RegistrationException(
+                            "Sự kiện có phí, vui lòng sử dụng nút Thanh toán để mua vé."
+                    );
+                }
                 if (event.isEnded()) {
                     throw new RegistrationException("Sự kiện đã kết thúc, không thể đăng ký.");
                 }
@@ -82,6 +87,11 @@ public class RegistrationService {
                 if ("CANCELLED".equals(registration.getStatus())) {
                     throw new RegistrationException("Đăng ký này đã được hủy trước đó.");
                 }
+                if ("PENDING_PAYMENT".equals(registration.getStatus())) {
+                    throw new RegistrationException(
+                            "Đăng ký đang chờ thanh toán; hãy hủy từ trang thanh toán."
+                    );
+                }
 
                 Event event = eventDAO.findByIdForUpdate(eventId, conn);
                 if (event == null) {
@@ -90,6 +100,11 @@ public class RegistrationService {
                 if (!event.isUpcoming()) {
                     throw new RegistrationException(
                             "Không thể hủy đăng ký sự kiện đã bắt đầu hoặc kết thúc."
+                    );
+                }
+                if (!event.isFree()) {
+                    throw new RegistrationException(
+                            "Vé đã thanh toán không thể tự hủy. Vui lòng liên hệ ban tổ chức để được hỗ trợ hoàn tiền."
                     );
                 }
 

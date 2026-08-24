@@ -21,8 +21,29 @@ public class RegistrationDAO {
     }
 
     public Registration findByUserAndEvent(int userId, int eventId, Connection conn) throws SQLException {
+        return findByUserAndEvent(userId, eventId, conn, false);
+    }
+
+    public Registration findByUserAndEventForUpdate(int userId, int eventId, Connection conn)
+            throws SQLException {
+        return findByUserAndEvent(userId, eventId, conn, true);
+    }
+
+    public Registration findByIdForUpdate(int registrationId, Connection conn) throws SQLException {
         String sql = "SELECT registration_id, user_id, event_id, status, registered_at, cancelled_at " +
-                "FROM registrations WHERE user_id = ? AND event_id = ?";
+                "FROM registrations WHERE registration_id = ? FOR UPDATE";
+        try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setInt(1, registrationId);
+            try (ResultSet rs = stmt.executeQuery()) {
+                return rs.next() ? mapResultSet(rs) : null;
+            }
+        }
+    }
+
+    private Registration findByUserAndEvent(int userId, int eventId, Connection conn, boolean lock)
+            throws SQLException {
+        String sql = "SELECT registration_id, user_id, event_id, status, registered_at, cancelled_at " +
+                "FROM registrations WHERE user_id = ? AND event_id = ?" + (lock ? " FOR UPDATE" : "");
 
         try (PreparedStatement stmt = conn.prepareStatement(sql)) {
             stmt.setInt(1, userId);
@@ -39,7 +60,7 @@ public class RegistrationDAO {
                 "e.title AS event_title, e.start_time AS event_start_time, " +
                 "e.end_time AS event_end_time, e.location AS event_location, " +
                 "e.status AS event_status, e.image_path AS event_image_path, " +
-                "e.avg_rating AS event_avg_rating " +
+                "e.avg_rating AS event_avg_rating, e.ticket_price AS event_ticket_price " +
                 "FROM registrations r " +
                 "JOIN events e ON r.event_id = e.event_id " +
                 "WHERE r.user_id = ? " +
@@ -87,12 +108,26 @@ public class RegistrationDAO {
     }
 
     public void insert(int userId, int eventId, Connection conn) throws SQLException {
-        String sql = "INSERT INTO registrations (user_id, event_id, status) VALUES (?, ?, 'REGISTERED')";
-        try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+        insertWithStatus(userId, eventId, "REGISTERED", conn);
+    }
+
+    public int insertPending(int userId, int eventId, Connection conn) throws SQLException {
+        return insertWithStatus(userId, eventId, "PENDING_PAYMENT", conn);
+    }
+
+    private int insertWithStatus(int userId, int eventId, String status, Connection conn)
+            throws SQLException {
+        String sql = "INSERT INTO registrations (user_id, event_id, status) VALUES (?, ?, ?)";
+        try (PreparedStatement stmt = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
             stmt.setInt(1, userId);
             stmt.setInt(2, eventId);
+            stmt.setString(3, status);
             stmt.executeUpdate();
+            try (ResultSet keys = stmt.getGeneratedKeys()) {
+                if (keys.next()) return keys.getInt(1);
+            }
         }
+        throw new SQLException("Không thể lấy ID đăng ký sau khi insert.");
     }
 
     public void reactivate(int userId, int eventId, Connection conn) throws SQLException {
@@ -106,6 +141,18 @@ public class RegistrationDAO {
         }
     }
 
+    public void markPending(int registrationId, Connection conn) throws SQLException {
+        updateStatus(registrationId, "PENDING_PAYMENT", conn);
+    }
+
+    public void markRegistered(int registrationId, Connection conn) throws SQLException {
+        updateStatus(registrationId, "REGISTERED", conn);
+    }
+
+    public void cancelById(int registrationId, Connection conn) throws SQLException {
+        updateStatus(registrationId, "CANCELLED", conn);
+    }
+
     public void cancel(int userId, int eventId, Connection conn) throws SQLException {
         String sql = "UPDATE registrations SET status='CANCELLED', cancelled_at=NOW() " +
                 "WHERE user_id=? AND event_id=?";
@@ -116,12 +163,26 @@ public class RegistrationDAO {
         }
     }
 
+    private void updateStatus(int registrationId, String status, Connection conn) throws SQLException {
+        String sql = "UPDATE registrations SET status=?, " +
+                "registered_at=CASE WHEN ?='CANCELLED' THEN registered_at ELSE NOW() END, " +
+                "cancelled_at=CASE WHEN ?='CANCELLED' THEN NOW() ELSE NULL END " +
+                "WHERE registration_id=?";
+        try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setString(1, status);
+            stmt.setString(2, status);
+            stmt.setString(3, status);
+            stmt.setInt(4, registrationId);
+            stmt.executeUpdate();
+        }
+    }
+
     public List<Registration> findRecent(int limit) throws SQLException {
         String sql = "SELECT r.*, u.full_name AS user_full_name, u.email AS user_email, " +
                 "e.title AS event_title, e.start_time AS event_start_time, " +
                 "e.end_time AS event_end_time, e.location AS event_location, " +
                 "e.status AS event_status, e.image_path AS event_image_path, " +
-                "e.avg_rating AS event_avg_rating " +
+                "e.avg_rating AS event_avg_rating, e.ticket_price AS event_ticket_price " +
                 "FROM registrations r " +
                 "JOIN users u ON r.user_id = u.user_id " +
                 "JOIN events e ON r.event_id = e.event_id " +
@@ -187,6 +248,7 @@ public class RegistrationDAO {
         reg.setEventStatus(rs.getString("event_status"));
         reg.setEventImagePath(rs.getString("event_image_path"));
         reg.setEventAvgRating(rs.getDouble("event_avg_rating"));
+        reg.setEventTicketPrice(rs.getBigDecimal("event_ticket_price"));
 
         Timestamp start = rs.getTimestamp("event_start_time");
         if (start != null) reg.setEventStartTime(start.toLocalDateTime());

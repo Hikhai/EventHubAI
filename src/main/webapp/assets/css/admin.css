@@ -721,3 +721,14 @@ body {
     .admin-main { margin-left: 0; }
     .topbar-toggle { display: block; }
 }
+
+/* ===== PAYMENT ADMIN ===== */
+.status-badge.pending { background: #FEF3C7; color: #92400E; }
+.payment-kpis .payment-revenue { font-size: 1.35rem; }
+.payment-admin-table code { color: var(--admin-primary); font-size: .76rem; word-break: break-all; }
+.payment-status { display: inline-flex; padding: .26rem .65rem; border-radius: 999px; font-size: .7rem; font-weight: 800; white-space: nowrap; }
+.payment-status.paid { background: #DCFCE7; color: #166534; }
+.payment-status.pending { background: #FEF3C7; color: #92400E; }
+.payment-status.failed { background: #FEE2E2; color: #991B1B; }
+.payment-status.refund-pending { background: #FFEDD5; color: #9A3412; }
+.payment-status.refunded { background: #EDE9FE; color: #5B21B6; }

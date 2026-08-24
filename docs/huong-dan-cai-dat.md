@@ -39,9 +39,9 @@ Cách nhanh bằng dòng lệnh (sửa user/mật khẩu cho đúng máy):
 mysql -u root -p eventhub_db < sql/eventhub_db.sql
 ```
 
-File dump **tắt kiểm tra khóa ngoại** lúc import, nên chạy được dù thứ tự bảng trong file không theo FK.
+File `eventhub_db.sql` là script đầy đủ: tự tạo database, tạo lại toàn bộ bảng và nạp dữ liệu mẫu. **Không cần chạy migration hay seed khác.** Lưu ý script sẽ xóa dữ liệu cũ trong các bảng EventHub trước khi tạo lại.
 
-Kiểm tra: phải có bảng `users`, `categories`, `events`, `registrations`, `reviews`.
+Kiểm tra: phải có các bảng `users`, `categories`, `events`, `registrations`, `payments`, `reviews`, `chat_logs`. Truy vấn đối chiếu số chỗ ở cuối file phải trả về 0 dòng.
 
 ---
 
@@ -95,6 +95,12 @@ IntelliJ cần artifact để Tomcat deploy.
 | `GEMINI_CHAT_TIMEOUT_SECONDS` | `90` (15–180 giây, tăng nếu câu trả lời dài) | Không |
 | `GEMINI_TEXT_MODELS` | `gemini-3.6-flash,gemini-2.5-flash` nếu muốn tự chọn model fallback | Không |
 | `UPLOAD_BASE_DIR` | đường dẫn tuyệt đối nếu muốn đổi chỗ lưu ảnh | Không |
+| `PAYMENT_PROVIDER` | `MOCK` (mặc định) hoặc `VNPAY` | Không |
+| `PAYMENT_HOLD_MINUTES` | Thời gian giữ chỗ, mặc định `15` | Không |
+| `VNPAY_TMN_CODE` | Mã website do VNPAY Sandbox cấp | Khi dùng VNPAY |
+| `VNPAY_HASH_SECRET` | Secret ký HMAC do VNPAY Sandbox cấp | Khi dùng VNPAY |
+| `VNPAY_PAYMENT_URL` | Mặc định URL VNPAY Sandbox | Không |
+| `VNPAY_RETURN_URL` | URL public `/payment/vnpay/return` | Không |
 
 `DB_PASSWORD` vẫn phải khai báo dù mật khẩu rỗng (hiếm). App **không** đọc user/pass từ file `.properties` — chỉ đọc biến môi trường (`DBConnection.java`).
 
@@ -139,7 +145,18 @@ Các user khác trong dump (`binh@example.com`, …) dùng chung mật khẩu `U
 1. Trang `/events` hiện card sự kiện + ảnh.  
 2. Login user → Đăng ký một sự kiện sắp tới → vào **Sự kiện của tôi**.  
 3. Login admin → **Tạo sự kiện** (giờ bắt đầu phải sau hiện tại ít nhất 1 giờ).  
-4. Nếu có `GEMINI_API_KEY`: bấm tóm tắt AI, chatbot góc phải, tạo sự kiện không upload ảnh.
+4. Mặc định `PAYMENT_PROVIDER=MOCK`: mở sự kiện ID `5`, bấm thanh toán và chọn kết quả mô phỏng. Kiểm tra **Thanh toán** trên menu user/admin.
+5. Nếu có `GEMINI_API_KEY`: bấm tóm tắt AI, chatbot góc phải, tạo sự kiện không upload ảnh.
+
+### Dữ liệu thanh toán mẫu
+
+- Event `1`: có giao dịch thành công, thất bại và đang chờ.
+- Event `2`: hết vé do 4 vé đã trả tiền + 1 vé đang giữ.
+- Event `5`: sự kiện có phí sạch để thử checkout mới.
+- Event `7`: có giao dịch chờ hoàn tiền và đã hoàn tiền.
+- Event `8`: các giao dịch lỗi/hủy/hết hạn để thử mua lại.
+
+`MOCK` không phát sinh tiền thật và chạy hoàn toàn nội bộ. Khi chuyển sang `VNPAY`, cần cấu hình IPN public trỏ tới `/payment/vnpay/ipn`; không commit secret lên Git.
 
 Ảnh mặc định nằm tại `src/main/webapp/uploads/defaults/`. Ảnh admin/AI upload ghi vào `uploads/events/` (thư mục này không đưa file thật lên Git, chỉ giữ `.gitkeep`).
 
