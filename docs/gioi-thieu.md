@@ -15,8 +15,8 @@
 | Vai trò | Việc chính |
 |---|---|
 | **Khách** | Xem danh sách / chi tiết sự kiện |
-| **Sinh viên (USER)** | Đăng ký tài khoản, đăng ký / hủy sự kiện, xem “Sự kiện của tôi”, đánh giá 1–5 sao, dùng chatbot |
-| **Quản trị (ADMIN)** | Dashboard, CRUD sự kiện & danh mục, xem danh sách đăng ký, dùng AI tóm tắt / tạo ảnh và chatbot |
+| **Sinh viên (USER)** | Đăng ký tài khoản, đăng ký sự kiện miễn phí hoặc mua vé, xem lịch sử thanh toán, đánh giá và dùng chatbot |
+| **Quản trị (ADMIN)** | Dashboard, CRUD sự kiện & danh mục, đặt giá vé, đối soát thanh toán, dùng AI và chatbot |
 
 Tài khoản demo (sau khi import database mẫu):
 
@@ -31,15 +31,18 @@ Tài khoản demo (sau khi import database mẫu):
 
 - Tìm sự kiện theo từ khóa, danh mục, phân trang
 - Xem chi tiết: thời gian, hạn đăng ký, số chỗ, tóm tắt AI, đánh giá
-- Đăng ký / hủy đăng ký (có kiểm tra hạn, sức chứa, sự kiện đã bắt đầu)
-- Trang **Sự kiện của tôi**: tab Sắp diễn ra / Đã tham gia / Đã hủy
+- Đăng ký miễn phí hoặc mua vé sự kiện có phí qua MockPay / VNPAY Sandbox
+- Giữ chỗ 15 phút trong lúc thanh toán; tự nhả chỗ khi giao dịch hết hạn
+- Lịch sử thanh toán và trạng thái giao dịch
+- Trang **Sự kiện của tôi**: Sắp diễn ra / Chờ thanh toán / Đã tham gia / Đã hủy
 - Đánh giá sau khi sự kiện kết thúc (mỗi người 1 lần)
 - Chatbot hỏi đáp về sự kiện đang mở
 
 ### 3.2. Phía quản trị
 
 - Dashboard: số sự kiện, lượt đăng ký, điểm trung bình, sự kiện sắp tới
-- Tạo / sửa sự kiện (Draft hoặc Published)
+- Tạo / sửa sự kiện (Draft hoặc Published), cấu hình giá vé hoặc miễn phí
+- Quản lý giao dịch, doanh thu, giao dịch chờ và hoàn tiền
 - Ảnh sự kiện: upload tay, **AI tạo poster**, hoặc ảnh mặc định theo danh mục
 - Không sửa sự kiện đã kết thúc / đã hủy; sự kiện đang diễn ra không đổi giờ bắt đầu
 - Xóa sự kiện trống, hoặc **hủy** nếu đã có người đăng ký
@@ -68,6 +71,7 @@ Không có API key thì web **vẫn chạy**, chỉ tắt phần AI.
 | CSDL | MySQL 8, connection pool **HikariCP** |
 | Bảo mật mật khẩu | BCrypt |
 | AI | Google Gemini HTTP API (`java.net.http.HttpClient` + Gson) |
+| Thanh toán | Strategy Pattern, MockPay, VNPAY Sandbox, HMAC SHA-512 |
 | Build | Maven (`pom.xml`), artifact WAR `eventhub` |
 
 Kiến trúc 4 lớp, không dùng Spring:
@@ -88,8 +92,9 @@ JSP (giao diện)
 |---|---|
 | `users` | Tài khoản, role `ADMIN` / `USER` |
 | `categories` | Danh mục sự kiện |
-| `events` | Thông tin sự kiện, ảnh, trạng thái, số chỗ, điểm TB |
-| `registrations` | Đăng ký (`REGISTERED` / `CANCELLED`), mỗi user–event một dòng |
+| `events` | Thông tin sự kiện, giá vé, trạng thái, số chỗ, điểm TB |
+| `registrations` | Giữ chỗ / đăng ký (`PENDING_PAYMENT`, `REGISTERED`, `CANCELLED`) |
+| `payments` | Lịch sử từng lần thử thanh toán, callback và hoàn tiền |
 | `reviews` | Điểm 1–5 + nhận xét, mỗi user–event một lần |
 | `chat_logs` | Lịch sử chat lâu dài theo user + cuộc trò chuyện; session chỉ là cache/fallback |
 

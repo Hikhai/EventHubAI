@@ -34,12 +34,15 @@ public class MyEventsServlet extends HttpServlet {
                     registrationService.getUserRegistrations(user.getUserId());
 
             // Phân loại vào 3 tab
+            List<Registration> pending    = new ArrayList<>(); // Chờ thanh toán
             List<Registration> upcoming   = new ArrayList<>(); // Sắp diễn ra
             List<Registration> attended   = new ArrayList<>(); // Đã tham gia
             List<Registration> cancelled  = new ArrayList<>(); // Đã hủy
 
             for (Registration reg : allRegs) {
-                if ("CANCELLED".equals(reg.getStatus())) {
+                if ("PENDING_PAYMENT".equals(reg.getStatus())) {
+                    pending.add(reg);
+                } else if ("CANCELLED".equals(reg.getStatus())) {
                     cancelled.add(reg);
                 } else if ("REGISTERED".equals(reg.getStatus())) {
                     if (reg.isEventEnded()) {
@@ -63,6 +66,7 @@ public class MyEventsServlet extends HttpServlet {
                 }
             }
 
+            req.setAttribute("pending",    pending);
             req.setAttribute("upcoming",   upcoming);
             req.setAttribute("attended",   attended);
             req.setAttribute("cancelled",  cancelled);

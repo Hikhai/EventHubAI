@@ -53,6 +53,14 @@
             </a>
         </li>
 
+        <li class="sidebar-menu-item">
+            <a href="${pageContext.request.contextPath}/admin/payments"
+               class="sidebar-menu-link ${fn:contains(currentUri, '/admin/payments') ? 'active' : ''}">
+                <i class="bi bi-credit-card-2-front"></i>
+                <span>Thanh toán</span>
+            </a>
+        </li>
+
         <li class="sidebar-menu-heading">KHÁC</li>
 
         <li class="sidebar-menu-item">

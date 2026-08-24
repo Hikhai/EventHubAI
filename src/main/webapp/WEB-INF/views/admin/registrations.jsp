@@ -32,13 +32,16 @@
                 <div class="col-md-8">
                     <h5 class="fw-bold mb-2">${event.title}</h5>
                     <p class="text-muted mb-1"><i class="bi bi-geo-alt"></i> ${event.location}</p>
-                    <p class="text-muted mb-0"><i class="bi bi-calendar3"></i> ${event.formattedStartTime}</p>
+                    <p class="text-muted mb-1"><i class="bi bi-calendar3"></i> ${event.formattedStartTime}</p>
+                    <p class="mb-0 ${event.free ? 'text-success' : 'text-primary'}">
+                        <i class="bi bi-ticket-perforated"></i> ${event.formattedTicketPrice}
+                    </p>
                 </div>
                 <div class="col-md-4 text-md-end mt-3 mt-md-0">
                     <div class="fs-4 fw-bold text-primary">
                         ${event.currentRegistered} / ${event.maxParticipants}
                     </div>
-                    <small class="text-muted">Chỗ đã đăng ký</small>
+                    <small class="text-muted">Đã xác nhận / đang giữ</small>
                 </div>
             </div>
         </div>
@@ -85,6 +88,9 @@
                                         <c:choose>
                                             <c:when test="${reg.status == 'REGISTERED'}">
                                                 <span class="status-badge published">Đã đăng ký</span>
+                                            </c:when>
+                                            <c:when test="${reg.status == 'PENDING_PAYMENT'}">
+                                                <span class="status-badge pending">Chờ thanh toán</span>
                                             </c:when>
                                             <c:otherwise>
                                                 <span class="status-badge cancelled">Đã hủy</span>

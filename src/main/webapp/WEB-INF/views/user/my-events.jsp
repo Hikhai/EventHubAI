@@ -24,6 +24,11 @@
             Sắp diễn ra
             <span class="count-badge">${upcoming.size()}</span>
         </button>
+        <button class="tab-btn" data-tab="pending">
+            <i class="bi bi-credit-card"></i>
+            Chờ thanh toán
+            <span class="count-badge">${pending.size()}</span>
+        </button>
         <button class="tab-btn" data-tab="attended">
             <i class="bi bi-check2-circle"></i>
             Đã tham gia
@@ -34,6 +39,49 @@
             Đã hủy
             <span class="count-badge">${cancelled.size()}</span>
         </button>
+    </div>
+
+    <%-- ===== TAB: CHỜ THANH TOÁN ===== --%>
+    <div class="tab-content" id="tab-pending">
+        <c:choose>
+            <c:when test="${empty pending}">
+                <div class="empty-state">
+                    <i class="bi bi-credit-card"></i>
+                    <h5>Không có vé nào đang chờ thanh toán</h5>
+                </div>
+            </c:when>
+            <c:otherwise>
+                <c:forEach var="reg" items="${pending}">
+                    <div class="registration-list-item">
+                        <img src="${pageContext.request.contextPath}${reg.displayImagePath}"
+                             class="event-thumb" alt="${reg.eventTitle}">
+                        <div class="event-info">
+                            <div class="event-title">${reg.eventTitle}</div>
+                            <div class="event-meta-small">
+                                <i class="bi bi-credit-card"></i>
+                                ${reg.formattedEventTicketPrice} · Đang giữ chỗ
+                            </div>
+                            <div class="event-meta-small">
+                                <i class="bi bi-calendar3"></i> ${reg.formattedEventStartTime}
+                            </div>
+                        </div>
+                        <div class="actions">
+                            <a href="${pageContext.request.contextPath}/events/detail?id=${reg.eventId}"
+                               class="btn btn-primary btn-sm">
+                                <i class="bi bi-arrow-right"></i> Thanh toán
+                            </a>
+                            <form method="post"
+                                  action="${pageContext.request.contextPath}/user/cancel-event"
+                                  class="confirm-form m-0"
+                                  data-confirm="Hủy giao dịch và trả lại chỗ đang giữ?">
+                                <input type="hidden" name="eventId" value="${reg.eventId}">
+                                <button type="submit" class="btn btn-outline-danger btn-sm">Hủy</button>
+                            </form>
+                        </div>
+                    </div>
+                </c:forEach>
+            </c:otherwise>
+        </c:choose>
     </div>
 
     <%-- ===== TAB 1: SẮP DIỄN RA ===== --%>
@@ -66,13 +114,17 @@
                                 <i class="bi bi-calendar3"></i>
                                     ${reg.formattedEventStartTime}
                             </div>
+                            <div class="event-meta-small ${reg.paidEvent ? 'text-primary' : 'text-success'}">
+                                <i class="bi bi-ticket-perforated"></i>
+                                ${reg.formattedEventTicketPrice}
+                            </div>
                         </div>
                         <div class="actions">
                             <a href="${pageContext.request.contextPath}/events/detail?id=${reg.eventId}"
                                class="btn btn-outline-primary btn-sm">
                                 <i class="bi bi-eye"></i> Xem
                             </a>
-                            <c:if test="${reg.eventUpcoming}">
+                            <c:if test="${reg.eventUpcoming && !reg.paidEvent}">
                                 <form method="post"
                                       action="${pageContext.request.contextPath}/user/cancel-event"
                                       class="confirm-form m-0"

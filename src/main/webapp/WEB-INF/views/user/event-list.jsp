@@ -142,6 +142,9 @@
                                 <span class="event-card-badge">
                                         ${event.categoryName}
                                 </span>
+                                <span class="event-price-badge ${event.free ? 'free' : 'paid'}">
+                                    ${event.formattedTicketPrice}
+                                </span>
                             </div>
 
                             <div class="event-card-body">
@@ -218,6 +221,13 @@
                                                     </span>
                                                 </c:otherwise>
                                             </c:choose>
+                                        </c:when>
+
+                                        <%-- Tài khoản đang giữ chỗ chờ thanh toán --%>
+                                        <c:when test="${myRegistrationStatus == 'PENDING_PAYMENT'}">
+                                            <span class="badge-status badge-payment-pending">
+                                                Chờ thanh toán
+                                            </span>
                                         </c:when>
 
                                         <%-- Tài khoản đã đăng ký --%>

@@ -1,7 +1,10 @@
 package com.eventhub.model;
 
+import java.math.BigDecimal;
+import java.text.NumberFormat;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.Locale;
 
 /**
  * Model đại diện cho một lượt đăng ký sự kiện.
@@ -12,7 +15,7 @@ public class Registration {
     private int registrationId;
     private int userId;
     private int eventId;
-    private String status;           // "REGISTERED" hoặc "CANCELLED"
+    private String status;           // PENDING_PAYMENT, REGISTERED hoặc CANCELLED
     private LocalDateTime registeredAt;
     private LocalDateTime cancelledAt;
 
@@ -28,6 +31,7 @@ public class Registration {
     private String eventStatus;
     private String eventImagePath;
     private double eventAvgRating;
+    private BigDecimal eventTicketPrice = BigDecimal.ZERO;
 
     private static final DateTimeFormatter DISPLAY_FORMAT =
             DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm");
@@ -57,6 +61,17 @@ public class Registration {
     public String getFormattedRegisteredAt() {
         if (registeredAt == null) return "";
         return registeredAt.format(DISPLAY_FORMAT);
+    }
+
+    public boolean isPaidEvent() {
+        return eventTicketPrice != null && eventTicketPrice.signum() > 0;
+    }
+
+    public String getFormattedEventTicketPrice() {
+        if (!isPaidEvent()) return "Miễn phí";
+        NumberFormat formatter = NumberFormat.getNumberInstance(Locale.forLanguageTag("vi-VN"));
+        formatter.setMaximumFractionDigits(0);
+        return formatter.format(eventTicketPrice) + " ₫";
     }
 
     // ===== GETTERS & SETTERS =====
@@ -191,5 +206,13 @@ public class Registration {
 
     public void setEventAvgRating(double eventAvgRating) {
         this.eventAvgRating = eventAvgRating;
+    }
+
+    public BigDecimal getEventTicketPrice() {
+        return eventTicketPrice;
+    }
+
+    public void setEventTicketPrice(BigDecimal eventTicketPrice) {
+        this.eventTicketPrice = eventTicketPrice == null ? BigDecimal.ZERO : eventTicketPrice;
     }
 }

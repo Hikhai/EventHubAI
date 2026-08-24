@@ -39,8 +39,8 @@ public class AdminEventDeleteServlet extends HttpServlet {
                         "Đã xóa sự kiện thành công.");
             } else {
                 req.getSession().setAttribute("successMsg",
-                        "Sự kiện đã được hủy (còn người đăng ký). " +
-                                "Tất cả đăng ký liên quan cũng bị hủy.");
+                        "Sự kiện đã được hủy. Đăng ký đang hoạt động đã bị hủy; " +
+                                "các vé đã thanh toán được chuyển sang trạng thái chờ hoàn tiền.");
             }
 
         } catch (Exception e) {

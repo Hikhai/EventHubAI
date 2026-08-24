@@ -1,6 +1,6 @@
 # EventHub AI
 
-Nền tảng quản lý và đăng ký sự kiện dành cho sinh viên, tích hợp Google Gemini (tóm tắt, tạo ảnh poster, chatbot).
+Nền tảng quản lý, đăng ký và thanh toán vé sự kiện dành cho sinh viên; tích hợp MockPay/VNPAY Sandbox và Google Gemini (tóm tắt, tạo ảnh poster, chatbot).
 
 | Tài liệu | Dùng để |
 |---|---|

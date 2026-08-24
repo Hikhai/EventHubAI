@@ -1,7 +1,10 @@
 package com.eventhub.model;
 
+import java.math.BigDecimal;
+import java.text.NumberFormat;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.Locale;
 
 /**
  * Model đại diện cho một sự kiện.
@@ -22,6 +25,8 @@ public class Event {
     private LocalDateTime registrationDeadline;
     private int maxParticipants;
     private int currentRegistered;
+    private BigDecimal ticketPrice = BigDecimal.ZERO;
+    private String currency = "VND";
     private double avgRating;
     private int totalReviews;
     private String status;             // "DRAFT","PUBLISHED","CANCELLED","COMPLETED"
@@ -80,6 +85,18 @@ public class Event {
 
     public boolean isCancelled() {
         return "CANCELLED".equals(status);
+    }
+
+    /** Giá bằng 0 nghĩa là sự kiện miễn phí. */
+    public boolean isFree() {
+        return ticketPrice == null || ticketPrice.compareTo(BigDecimal.ZERO) == 0;
+    }
+
+    public String getFormattedTicketPrice() {
+        if (isFree()) return "Miễn phí";
+        NumberFormat formatter = NumberFormat.getNumberInstance(Locale.forLanguageTag("vi-VN"));
+        formatter.setMaximumFractionDigits(0);
+        return formatter.format(ticketPrice) + " ₫";
     }
 
     /** Tỷ lệ phần trăm chỗ đã đăng ký (dùng cho progress bar) */
@@ -183,6 +200,16 @@ public class Event {
 
     public void setCurrentRegistered(int currentRegistered) {
         this.currentRegistered = currentRegistered;
+    }
+
+    public BigDecimal getTicketPrice() { return ticketPrice; }
+    public void setTicketPrice(BigDecimal ticketPrice) {
+        this.ticketPrice = ticketPrice == null ? BigDecimal.ZERO : ticketPrice;
+    }
+
+    public String getCurrency() { return currency; }
+    public void setCurrency(String currency) {
+        this.currency = currency == null || currency.isBlank() ? "VND" : currency;
     }
 
     public double getAvgRating() { return avgRating; }

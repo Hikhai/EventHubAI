@@ -236,12 +236,18 @@
                 </div>
 
                 <div class="registration-info">
-                    <span class="label">Đã đăng ký</span>
+                    <span class="label">Đã giữ / đăng ký</span>
                     <span class="value">${event.currentRegistered}/${event.maxParticipants}</span>
                 </div>
                 <div class="registration-info">
                     <span class="label">Còn lại</span>
                     <span class="value text-success">${event.availableSlots} chỗ</span>
+                </div>
+                <div class="registration-info">
+                    <span class="label">Giá vé</span>
+                    <span class="value ${event.free ? 'text-success' : 'ticket-price'}">
+                        ${event.formattedTicketPrice}
+                    </span>
                 </div>
                 <div class="registration-info">
                     <span class="label">Hạn đăng ký</span>
@@ -284,12 +290,49 @@
                     </c:when>
 
                     <c:when test="${userRegistration != null
+                                    && userRegistration.status == 'PENDING_PAYMENT'}">
+                        <c:choose>
+                            <c:when test="${pendingPayment != null}">
+                                <div class="status-message payment-pending">
+                                    <i class="bi bi-hourglass-split"></i>
+                                    Đang giữ chỗ đến ${pendingPayment.formattedExpiresAt}
+                                </div>
+                                <a href="${pendingPayment.checkoutUrl}"
+                                   class="btn-register d-block text-center text-decoration-none">
+                                    <i class="bi bi-credit-card"></i> Tiếp tục thanh toán
+                                </a>
+                                <form method="post"
+                                      action="${pageContext.request.contextPath}/user/cancel-event"
+                                      class="confirm-form"
+                                      data-confirm="Hủy giao dịch và trả lại chỗ đang giữ?">
+                                    <input type="hidden" name="eventId" value="${event.eventId}">
+                                    <button type="submit" class="btn-cancel">
+                                        <i class="bi bi-x-circle"></i> Hủy giữ chỗ
+                                    </button>
+                                </form>
+                            </c:when>
+                            <c:otherwise>
+                                <div class="status-message expired">
+                                    Giao dịch cũ đã hết hạn. Bạn có thể tạo lại thanh toán.
+                                </div>
+                                <form method="post"
+                                      action="${pageContext.request.contextPath}/user/register-event">
+                                    <input type="hidden" name="eventId" value="${event.eventId}">
+                                    <button type="submit" class="btn-register">
+                                        <i class="bi bi-arrow-clockwise"></i> Tạo lại thanh toán
+                                    </button>
+                                </form>
+                            </c:otherwise>
+                        </c:choose>
+                    </c:when>
+
+                    <c:when test="${userRegistration != null
                                     && userRegistration.status == 'REGISTERED'}">
                         <div class="status-message registered">
                             <i class="bi bi-check-circle-fill"></i>
-                            Bạn đã đăng ký sự kiện này
+                            ${event.free ? 'Bạn đã đăng ký sự kiện này' : 'Vé đã được thanh toán và xác nhận'}
                         </div>
-                        <c:if test="${event.upcoming}">
+                        <c:if test="${event.upcoming && event.free}">
                             <form method="post"
                                   action="${pageContext.request.contextPath}/user/cancel-event"
                                   class="confirm-form"
@@ -308,7 +351,7 @@
                                 <a href="${pageContext.request.contextPath}/auth/login"
                                    class="btn-register d-block text-center text-decoration-none">
                                     <i class="bi bi-box-arrow-in-right"></i>
-                                    Đăng nhập để đăng ký
+                                    ${event.free ? 'Đăng nhập để đăng ký' : 'Đăng nhập để mua vé'}
                                 </a>
                             </c:when>
                             <c:otherwise>
@@ -340,6 +383,10 @@
                             <input type="hidden" name="eventId" value="${event.eventId}">
                             <button type="submit" class="btn-register">
                                 <c:choose>
+                                    <c:when test="${!event.free}">
+                                        <i class="bi bi-credit-card"></i>
+                                        Thanh toán ${event.formattedTicketPrice}
+                                    </c:when>
                                     <c:when test="${userRegistration != null
                                                     && userRegistration.status == 'CANCELLED'}">
                                         <i class="bi bi-arrow-clockwise"></i> Đăng ký lại
@@ -349,6 +396,12 @@
                                     </c:otherwise>
                                 </c:choose>
                             </button>
+                            <c:if test="${!event.free}">
+                                <div class="payment-provider-note">
+                                    <i class="bi bi-shield-check"></i>
+                                    ${paymentProviderLabel} · Giữ chỗ ${paymentHoldMinutes} phút
+                                </div>
+                            </c:if>
                         </form>
                     </c:otherwise>
                 </c:choose>

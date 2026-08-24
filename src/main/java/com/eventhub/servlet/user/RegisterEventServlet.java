@@ -1,8 +1,13 @@
 package com.eventhub.servlet.user;
 
 import com.eventhub.exception.EventException;
+import com.eventhub.exception.PaymentException;
 import com.eventhub.exception.RegistrationException;
+import com.eventhub.model.Event;
+import com.eventhub.model.Payment;
 import com.eventhub.model.User;
+import com.eventhub.service.EventService;
+import com.eventhub.service.PaymentService;
 import com.eventhub.service.RegistrationService;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
@@ -19,6 +24,8 @@ import java.io.IOException;
 public class RegisterEventServlet extends HttpServlet {
 
     private final RegistrationService registrationService = new RegistrationService();
+    private final EventService eventService = new EventService();
+    private final PaymentService paymentService = new PaymentService();
 
     @Override
     protected void doPost(HttpServletRequest req, HttpServletResponse resp)
@@ -37,11 +44,18 @@ public class RegisterEventServlet extends HttpServlet {
         }
 
         try {
-            registrationService.registerEvent(user.getUserId(), eventId);
+            Event event = eventService.getEventById(eventId);
+            if (event.isFree()) {
+                registrationService.registerEvent(user.getUserId(), eventId);
+                req.getSession().setAttribute("successMsg", "Đăng ký tham gia thành công!");
+            } else {
+                Payment payment = paymentService.createCheckout(
+                        user.getUserId(), eventId, req);
+                resp.sendRedirect(payment.getCheckoutUrl());
+                return;
+            }
 
-            req.getSession().setAttribute("successMsg", "Đăng ký tham gia thành công!");
-
-        } catch (EventException | RegistrationException e) {
+        } catch (EventException | RegistrationException | PaymentException e) {
             req.getSession().setAttribute("errorMsg", e.getMessage());
 
         } catch (Exception e) {

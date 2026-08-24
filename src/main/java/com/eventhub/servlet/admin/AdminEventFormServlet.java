@@ -14,6 +14,7 @@ import jakarta.servlet.annotation.*;
 import jakarta.servlet.http.*;
 
 import java.io.IOException;
+import java.math.BigDecimal;
 import java.util.List;
 
 /**
@@ -149,7 +150,7 @@ public class AdminEventFormServlet extends HttpServlet {
     /**
      * Parse các trường từ request thành Event object.
      */
-    private Event parseEventFromRequest(HttpServletRequest req) {
+    private Event parseEventFromRequest(HttpServletRequest req) throws EventException {
         Event event = new Event();
 
         event.setTitle(req.getParameter("title"));
@@ -165,6 +166,15 @@ public class AdminEventFormServlet extends HttpServlet {
         // Parse maxParticipants
         Integer maxP = ValidationUtil.parseIntOrNull(req.getParameter("maxParticipants"));
         if (maxP != null) event.setMaxParticipants(maxP);
+
+        String priceValue = req.getParameter("ticketPrice");
+        try {
+            event.setTicketPrice(priceValue == null || priceValue.isBlank()
+                    ? BigDecimal.ZERO : new BigDecimal(priceValue.trim()));
+        } catch (NumberFormatException e) {
+            throw new EventException("Giá vé không hợp lệ.");
+        }
+        event.setCurrency("VND");
 
         // Parse datetime (HTML datetime-local format: "yyyy-MM-ddTHH:mm")
         event.setStartTime(DateUtil.parseHtmlDateTime(req.getParameter("startTime")));

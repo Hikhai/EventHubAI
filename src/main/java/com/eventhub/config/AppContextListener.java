@@ -1,6 +1,7 @@
 package com.eventhub.config;
 
 import com.eventhub.service.ChatbotService;
+import com.eventhub.service.PaymentExpiryService;
 import jakarta.servlet.ServletContextEvent;
 import jakarta.servlet.ServletContextListener;
 import jakarta.servlet.annotation.WebListener;
@@ -20,6 +21,7 @@ public class AppContextListener implements ServletContextListener {
         }
         try {
             DBConnection.init();
+            PaymentExpiryService.start();
         } catch (Exception e) {
             System.err.println("[AppContextListener] Chưa khởi tạo DB pool: " + e.getMessage());
         }
@@ -28,6 +30,7 @@ public class AppContextListener implements ServletContextListener {
     @Override
     public void contextDestroyed(ServletContextEvent sce) {
         ChatbotService.shutdownExecutor();
+        PaymentExpiryService.shutdown();
         DBConnection.shutdown();
     }
 }

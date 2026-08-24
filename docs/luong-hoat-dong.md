@@ -31,11 +31,11 @@ flowchart LR
 | Servlet | Đọc param, gọi service, forward/redirect | `.../servlet/` |
 | Service | Validate, transaction, gọi AI | `.../service/` |
 | DAO | JDBC / PreparedStatement | `.../dao/` |
-| Model | `User`, `Event`, `Registration`, `Review`, `Category` | `.../model/` |
+| Model | `User`, `Event`, `Registration`, `Payment`, `Review`, `Category` | `.../model/` |
 
 Khi Tomcat bật app:
 
-1. `AppContextListener` tạo thư mục ảnh + mở pool HikariCP  
+1. `AppContextListener` tạo thư mục ảnh, mở pool HikariCP và chạy scheduler nhả chỗ thanh toán hết hạn
    `src/main/java/com/eventhub/config/AppContextListener.java`
 2. `DBConnection` đọc `DB_URL`, `DB_USERNAME`, `DB_PASSWORD`  
    `src/main/java/com/eventhub/config/DBConnection.java`
@@ -169,13 +169,13 @@ GET /events/detail?id={id}
 
 User đã login thì servlet hỏi `RegistrationService` xem đã đăng ký chưa, để hiện đúng nút.
 
-### 4.3. Đăng ký sự kiện
+### 4.3. Đăng ký và thanh toán vé
 
 ```
 POST /user/register-event   (cần login)
 ```
 
-Đây là luồng **cần giải thích kỹ**: nhiều người bấm cùng lúc có thể vượt sức chứa. Code khóa dòng sự kiện (`SELECT FOR UPDATE`) trong 1 transaction.
+Sự kiện miễn phí dùng luồng đăng ký trực tiếp bên dưới. Sự kiện có phí tạo `registration=PENDING_PAYMENT`, giữ chỗ và chuyển sang MockPay hoặc VNPAY. Cả hai luồng đều khóa dòng sự kiện (`SELECT FOR UPDATE`) để không vượt sức chứa.
 
 ```mermaid
 sequenceDiagram
@@ -211,6 +211,33 @@ sequenceDiagram
 3. Đã `CANCELLED` thì được đăng ký lại (đổi status, không tạo dòng mới — unique user–event)  
 4. Tăng `current_registered` cùng transaction
 
+Luồng sự kiện có phí:
+
+```mermaid
+sequenceDiagram
+  actor SV as Sinh viên
+  participant PS as PaymentService
+  participant DB as MySQL
+  participant GW as MockPay/VNPAY
+  SV->>PS: Bấm Thanh toán
+  PS->>DB: Khóa event, tạo PENDING_PAYMENT + payment PENDING, giữ chỗ
+  PS->>GW: Tạo checkout URL
+  GW-->>SV: Trang thanh toán
+  GW->>PS: Callback/IPN có chữ ký
+  PS->>DB: PAID + REGISTERED trong transaction
+  Note over PS,DB: Scheduler nhả chỗ nếu quá hạn
+```
+
+| Thành phần | File |
+|---|---|
+| Điều phối transaction/idempotency | `service/PaymentService.java` |
+| Tác vụ hết hạn | `service/PaymentExpiryService.java` |
+| Strategy cổng thanh toán | `payment/PaymentGateway.java` |
+| Mock demo | `payment/MockPaymentGateway.java`, `MockPaymentServlet.java` |
+| VNPAY + HMAC | `payment/VnPayPaymentGateway.java`, `servlet/payment/` |
+| Lưu/đọc giao dịch | `dao/PaymentDAO.java`, `model/Payment.java` |
+| Lịch sử user/admin | `/user/payments`, `/admin/payments` |
+
 ### 4.4. Hủy đăng ký
 
 ```
@@ -231,8 +258,8 @@ GET /user/my-events
 
 | File | Vai trò |
 |---|---|
-| `servlet/user/MyEventsServlet.java` | Tách 3 list: upcoming / attended / cancelled |
-| `views/user/my-events.jsp` | 3 tab |
+| `servlet/user/MyEventsServlet.java` | Tách 4 list: pending / upcoming / attended / cancelled |
+| `views/user/my-events.jsp` | 4 tab |
 | `assets/css/style.css` (phần `.my-events-*`) | Giao diện trang này |
 
 ### 4.6. Đánh giá
@@ -382,12 +409,16 @@ Chatbot yêu cầu đăng nhập. Lịch sử được lọc theo user ở serve
 | `/user/register-event` | Đã login | `RegisterEventServlet` |
 | `/user/cancel-event` | Đã login | `CancelEventServlet` |
 | `/user/submit-review` | Đã login | `SubmitReviewServlet` |
+| `/user/payments` | USER | `UserPaymentsServlet` |
+| `/user/payments/mock` | USER | `MockPaymentServlet` |
+| `/payment/vnpay/return` `/ipn` | VNPAY | `VnPayReturnServlet` / `VnPayIpnServlet` |
 | `/admin/dashboard` | ADMIN | `DashboardServlet` |
 | `/admin/events` | ADMIN | `AdminEventListServlet` |
 | `/admin/events/create` `/edit` | ADMIN | `AdminEventFormServlet` |
 | `/admin/events/delete` | ADMIN | `AdminEventDeleteServlet` |
 | `/admin/categories` | ADMIN | `AdminCategoryServlet` |
 | `/admin/events/registrations` | ADMIN | `AdminRegistrationsServlet` |
+| `/admin/payments` | ADMIN | `AdminPaymentsServlet` |
 | `/api/ai/summary` | ADMIN | `AISummaryServlet` |
 | `/api/chatbot` (GET/POST/DELETE) | Đã login | `ChatbotServlet` |
 | `/uploads/*` | Công khai | `UploadServlet` |
